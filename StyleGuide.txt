@@ -1,0 +1,63 @@
+Comments
+-comments will start with a space
+-comments will be sentences, with correct capitalization, spelling, and punctuation.
+-above line comments for anything substantial, end of line to explain variables/give units
+-comments exceeding 80 characters should be broken over several lines
+-comments should have the same level of indentation as the code they're explaining
+
+Functions & Loops
+-braces are on the same line as the function/loop signature
+-function/loop body follows the function/loop signature with no whitespace in between
+-closing braces / ends are on a new line for functions/loops, with no additional whitespace between the brace and the last line of the function/loop
+-parameters will be separated by commas in function calls
+-function names will be in mixed case, with an indication of return value type prefixed to the function's name
+Returning an integer: i_functionName
+Returning a double: d_functionName
+Returning an MxN array: mMxN_functionName 
+Returning void: v_functionName
+Returning a struct: s_functionName
+Returning a complex number: z_functionName
+
+Variables
+-variable names will be mixed case, with the same prefixing convention as functions except for the underscore (iVariableName rather than i_functionName)
+
+Whitespace
+-there will be spaces around '+' and '-' operators, but not around other math operators, namely '=', '*', '/', and '^'
+-newlines will be used to break up relevant sections of code, based on our discretion
+
+Example Code
+C++:
+
+// This function returns pi.
+double d_getPi(int iUseless1, int iUseless2){
+	double dVar1 = sqrt(3); // This is the square root of three.
+	double dVar2 = 0.14159;
+	
+	return dVar1*dVar1 + dVar2;
+}
+
+int main(){
+	for(int ii = 0; ii < 3; ii++){
+		double dProduct = d_getPi(0, 1)*ii;
+		cout << dProduct << endl;
+	}
+
+	return 0;
+}
+
+MATLAB:
+
+% This function returns pi.
+function [double] = d_getPi(iUseless1, iUseless2)
+	dVar1 = sqrt(3); % This is the square root of three.
+	dVar2 = 0.14159;
+
+	double = dVar1*dVar1 + dVar2;
+end
+
+...
+
+for ii = 0:2
+	dProduct = d_getPi(0, 1)*ii;
+	disp(dProduct);
+end
