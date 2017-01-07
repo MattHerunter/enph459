@@ -28,11 +28,13 @@ const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
 void setup() {
   // Initialization
   Serial.begin(ARDUINO_BAUDRATE);
-  setFDC(FDC_START);
-  
+
   // Tests
-  squareWaveTestSet();
-  randomTestSet();
+  for(int fdc = FDC_START;fdc <= FDC_FINAL; fdc += FDC_DELTA){
+    setFDC(fdc);
+    squareWaveTestSet();
+    randomTestSet();
+  }
   
   // Finished
   exitProgram();
@@ -76,6 +78,8 @@ void stopTest() {
 void setFDC(int fdc) {
   String s = (String)"Set:" + (String)fdc + (String)":" + (String)FAN_ADJUST_TIME + (String)"\n";
   Serial.print(s);
+  // Wait for fan adjust time
+  delay(FAN_ADJUST_TIME*1000);
 }
 
 void exitProgram(){
