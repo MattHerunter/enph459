@@ -2,7 +2,7 @@
 #define ARDUINO_BAUDRATE 128000
 
 // Pin that controls the heating element MOSFET
-#define MOSFET_GATE_PIN 2
+#define MOSFET_GATE_PIN 2 
 
 // Number of seconds to wait after updating the fan duty cycle
 #define FAN_ADJUST_TIME 3
