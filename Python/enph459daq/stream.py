@@ -78,7 +78,7 @@ def stream():
                 streaming = True
                 # Open a timestamped .csv file to append data to
                 filename = directory_path + '\\fdc'+str(fdc)+'rpm'+str(rpm)+'_'+str(test)+'_'\
-                           + datetime.now().strftime('%H-%M')+'.csv'
+                    + datetime.now().strftime('%H-%M')+'.csv'
                 out_file = open(filename, mode='a')
                 test += 1
             else:
