@@ -2,7 +2,7 @@
 #define ARDUINO_BAUDRATE 128000
 
 // Pin that controls the heating element MOSFET
-#define MOSFET_GATE_PIN 2 
+#define MOSFET_GATE_PIN 2
 
 // Number of seconds to wait after updating the fan duty cycle
 #define FAN_ADJUST_TIME 3
@@ -28,21 +28,22 @@ const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
 void setup() {
   // Initialization
   Serial.begin(ARDUINO_BAUDRATE);
-
-  // Tests
-  for(int fdc = FDC_START;fdc <= FDC_FINAL; fdc += FDC_DELTA){
-    setFDC(fdc);
-    squareWaveTestSet();
-    randomTestSet();
-  }
-  
-  // Finished
-  exitProgram();
 }
 
 // Loops forever
 void loop() {
-  
+  delay(4000);
+  // Tests
+  for (int fdc = FDC_START; fdc <= FDC_FINAL; fdc += FDC_DELTA) {
+    setFDC(fdc);
+    squareWaveTestSet();
+    //randomTestSet();
+  }
+
+  // Finished
+  exitProgram();
+
+  while(1){}
 }
 
 // Writes data read from the analog ports to the serial ports
@@ -79,11 +80,11 @@ void setFDC(int fdc) {
   String s = (String)"Set:" + (String)fdc + (String)":" + (String)FAN_ADJUST_TIME + (String)"\n";
   Serial.print(s);
   // Wait for fan adjust time
-  delay(FAN_ADJUST_TIME*1000);
+  delay(FAN_ADJUST_TIME * 1000);
 }
 
-void exitProgram(){
-  Serial.print("Exit\n");  
+void exitProgram() {
+  Serial.print("Exit\n");
 }
 
 void randomTest(unsigned long total_time, unsigned long max_pulse) {
@@ -116,16 +117,16 @@ void squareWaveTestSet() {
   squareWaveTest(3, 3000, 3000);
 
   // Test 2 - Medium, medium pulses.
-  squareWaveTest(9, 1000, 1000);
+  //squareWaveTest(9, 1000, 1000);
 
   // Test 3 - Short, fast pulses.
-  squareWaveTest(45, 200, 200);
+  //squareWaveTest(45, 200, 200);
 
   // Test 4 - Shorter, faster pulses.
-  squareWaveTest(90, 100, 100);
+  //squareWaveTest(90, 100, 100);
 
   // Test 5 - Super short, hilariously fast pulses.
-  squareWaveTest(225, 40, 40);
+  //squareWaveTest(225, 40, 40);
 }
 
 void randomTestSet() {

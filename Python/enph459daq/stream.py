@@ -14,11 +14,15 @@ import ast
 # Import for waiting for the fan to adjust
 from time import sleep
 
+# Import for creating folders to hold data
+import os
+
 # ---IP Address of the Controller---
-controllerAddress = '192.168.137.246'
+controllerAddress = '192.168.137.193'
 
 # ---Arduino Serial Port Settings---
 ARDUINO_BAUDRATE = 128000
+FAN_START_FDC = 1500
 
 # ---Exit Codes---
 # 0 - Exited normally due to 'Exit' command from Arduino
@@ -43,6 +47,7 @@ def stream():
     # Exit if no Arduino devices were found
     if ser.port is None:
         return 1
+    ser.open()
 
     # Initialize the streaming flag to false
     streaming = False
@@ -52,8 +57,14 @@ def stream():
     rpm = 0
     test = 0
 
-    # Set the fan speed adjust to On
+    # Set the fan speed adjust to On and start the fan
     set_speed_adjust(1)
+    set_fdc(FAN_START_FDC)
+
+    # Make a directory for a new day if it does not exist already
+    directory_path = os.getcwd() + datetime.now().strftime('\Data\%Y-%m-%d')
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path)
 
     # Continuously read from the serial port
     while ser.isOpen():
@@ -66,8 +77,8 @@ def stream():
                 print('Received \'Start\' command.')
                 streaming = True
                 # Open a timestamped .csv file to append data to
-                filename = 'fdc'+str(fdc)+'rpm'+str(rpm)+'_'+str(test)+'_'\
-                           + datetime.now().strftime('%Y-%m-%d_%H:%M')+'.csv'
+                filename = directory_path + '\\fdc'+str(fdc)+'rpm'+str(rpm)+'_'+str(test)+'_'\
+                           + datetime.now().strftime('%H-%M')+'.csv'
                 out_file = open(filename, mode='a')
                 test += 1
             else:
@@ -86,9 +97,9 @@ def stream():
         # Received a 'Set' command
         elif 'Set' in line:
             if not streaming:
-                print('Received \'Set\' command.')
                 fdc = int(line.split(':')[1])
                 t = int(line.split(':')[2])
+                print('Received \'Set\' command for ' + str(fdc) + '.')
                 set_fdc(fdc)
                 sleep(t)
                 rpm = get_rpm()
