@@ -18,7 +18,7 @@ from time import sleep
 import os
 
 # ---IP Address of the Controller---
-controllerAddress = '192.168.137.193'
+controllerAddress = '192.168.137.175'
 
 # ---Arduino Serial Port Settings---
 ARDUINO_BAUDRATE = 128000
@@ -134,7 +134,7 @@ def find_arduino_port():
         print('Multiple Arduino devices were found:')
         for number, name in enumerate(arduino_ports):
             print('\t' + name + '\t(' + str(number) + ')')
-        arduino_port = arduino_ports[int(raw_input('Enter the number of the port you want to use: '))]
+        arduino_port = arduino_ports[int(input('Enter the number of the port you want to use: '))]
 
     # Found one Arduino device
     elif len(arduino_ports) == 1:
