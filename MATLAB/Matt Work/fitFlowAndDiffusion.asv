@@ -1,6 +1,0 @@
-function [shift, alpha] = fitFlowAndDiffusion(y1,y2)
-    % y1 is the signal at the first sensor, y2 should lag y1 and have more
-    % diffusion applied. alpha is the diffusion coefficient T_t = alpha*T_xx
-    
-end
-
