@@ -21,7 +21,7 @@ import os
 controllerAddress = '192.168.137.175'
 
 # ---Arduino Serial Port Settings---
-ARDUINO_BAUDRATE = 128000
+ARDUINO_BAUDRATE = 57600
 FAN_START_FDC = 1500
 
 # ---Exit Codes---
@@ -32,8 +32,9 @@ FAN_START_FDC = 1500
 # ---List of Arduino Commands---
 # Start     - Start streaming data to file
 # Stop      - Stop streaming data to file
-# Set:fdc:t - Send a command to the controller to set the FDC to fdc. Arduino will wait t seconds for the fan to adjust.
+# Set:fdc:w - Send a command to the controller to set the FDC to fdc. Arduino will wait w seconds for the fan to adjust.
 # Exit      - Done data collection, exit program
+# Time:dt   - Send the sample time in microseconds dt
 
 
 # Main data acquisition method
@@ -46,16 +47,19 @@ def stream():
 
     # Exit if no Arduino devices were found
     if ser.port is None:
+        set_speed_adjust(0)
         return 1
     ser.open()
 
     # Initialize the streaming flag to false
     streaming = False
 
-    # Initialize the FDC, RPM and test number to 0
+    # Initialize the FDC, RPM, test number, sample time, and time to 0
     fdc = 0
     rpm = 0
     test = 0
+    dt = 0
+    t = 0
 
     # Set the fan speed adjust to On and start the fan
     set_speed_adjust(1)
@@ -98,16 +102,24 @@ def stream():
         elif 'Set' in line:
             if not streaming:
                 fdc = int(line.split(':')[1])
-                t = int(line.split(':')[2])
+                w = int(line.split(':')[2])
                 print('Received \'Set\' command for ' + str(fdc) + '.')
                 set_fdc(fdc)
-                sleep(t)
+                sleep(w)
                 rpm = get_rpm()
                 # Arduino will repeat the same test for new FDC/RPM
                 test = 0
             else:
                 print('Received \'Set\' command while streaming. Ignoring.')
-        
+
+        # Received a 'Time' command
+        elif 'Time' in line:
+            if not streaming:
+                dt = int(line.split(':')[1])
+                print('Received \'Time\' command. Sample time is ' + str(dt) + ' microseconds.')
+            else:
+                print('Received \'Time\' command while streaming. Ignoring.')
+
         # Received an 'Exit' command
         elif line == 'Exit':
             if not streaming:
@@ -119,8 +131,10 @@ def stream():
         # Not a command, and currently streaming data
         elif streaming:
             out_file.write(line + '\n')
+            t += dt
 
     print('Serial port unexpectedly closed.')
+    set_speed_adjust(0)
     return 2
 
 

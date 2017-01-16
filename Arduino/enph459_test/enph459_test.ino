@@ -1,5 +1,6 @@
 // Must be the same value as in Python script
-#define ARDUINO_BAUDRATE 128000
+#define ARDUINO_BAUDRATE 57600
+#define SAMPLE_TIME_MICROS 2000
 
 // Pin that controls the heating element MOSFET
 #define MOSFET_GATE_PIN 2
@@ -13,7 +14,7 @@
 #define FDC_FINAL 4000
 
 // Constant array to hold the pins reading from the thermocouples
-const int ANALOG_INS[] = {2, 3};
+const int ANALOG_INS[] = {4, 5};
 
 // Number of pins reading from thermocouples
 const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
@@ -21,13 +22,15 @@ const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
 // ---List of Python Commands---
 // Start     - Start streaming data to file
 // Stop      - Stop streaming data to file
-// Set:fdc:t - Send a command to the controller to set the FDC to fdc. Arduino will wait t seconds for the fan to adjust.
+// Set:fdc:w - Send a command to the controller to set the FDC to fdc. Arduino will wait w seconds for the fan to adjust.
 // Exit      - Done data collection, exit program
+// Time:dt   - Send the sample time in microseconds dt
 
 // Runs once at beginning
 void setup() {
   // Initialization
   Serial.begin(ARDUINO_BAUDRATE);
+  sendSampleTime();
 }
 
 // Loops forever
@@ -36,7 +39,8 @@ void loop() {
   // Tests
   for (int fdc = FDC_START; fdc <= FDC_FINAL; fdc += FDC_DELTA) {
     setFDC(fdc);
-    squareWaveTestSet();
+    squareWaveTest(3, 3000, 3000);
+    //squareWaveTestSet();
     //randomTestSet();
   }
 
@@ -48,9 +52,9 @@ void loop() {
 
 // Writes data read from the analog ports to the serial ports
 void streamData(unsigned long time_millis) {
-  int num_samples = time_millis * 2;
+  int num_samples = time_millis * 1000 / SAMPLE_TIME_MICROS;
   for (int ii = 0; ii < num_samples; ii++) {
-    delayMicroseconds(500);
+    delayMicroseconds(SAMPLE_TIME_MICROS);
     for (int jj = 0; jj < NUM_ANALOG_INS - 1; jj++) {
       Serial.print(analogRead(ANALOG_INS[jj]));
       Serial.print(",");
@@ -83,10 +87,18 @@ void setFDC(int fdc) {
   delay(FAN_ADJUST_TIME * 1000);
 }
 
+// Called to tell Python data collection is over, return 0
 void exitProgram() {
   Serial.print("Exit\n");
 }
 
+// Called to tell Python to the sample time in microseconds
+void sendSampleTime() {
+  String s = (String)"Time:" + (String)SAMPLE_TIME_MICROS + (String)"\n";
+  Serial.print(s);
+}
+
+// Stochastic square pulse test
 void randomTest(unsigned long total_time, unsigned long max_pulse) {
   startTest();
   unsigned long start = millis();
@@ -99,6 +111,7 @@ void randomTest(unsigned long total_time, unsigned long max_pulse) {
   stopTest();
 }
 
+// Regular square pulse test
 void squareWaveTest(int num_pulses, unsigned long pulse_high, unsigned long pulse_low) {
   startTest();
   for (int ii = 0; ii < num_pulses; ii++) {
@@ -110,6 +123,21 @@ void squareWaveTest(int num_pulses, unsigned long pulse_high, unsigned long puls
   stopTest();
 }
 
+/*
+// Train of delta pulses with random density
+void deltaTest(unsigned long total_time, unsigned long pulse_width, int percentPulseProbability) {
+  startTest();
+  unsigned long start = millis();
+  while (millis() - start < total_time) {
+    digitalWrite(2, HIGH);
+    streamData(random(max_pulse));
+    digitalWrite(2, LOW);
+    streamData(random(max_pulse));
+  }
+  stopTest();
+}
+*/
+
 void squareWaveTestSet() {
   // put your main code here, to run repeatedly:
 
@@ -117,16 +145,16 @@ void squareWaveTestSet() {
   squareWaveTest(3, 3000, 3000);
 
   // Test 2 - Medium, medium pulses.
-  //squareWaveTest(9, 1000, 1000);
+  squareWaveTest(9, 1000, 1000);
 
   // Test 3 - Short, fast pulses.
-  //squareWaveTest(45, 200, 200);
+  squareWaveTest(45, 200, 200);
 
   // Test 4 - Shorter, faster pulses.
-  //squareWaveTest(90, 100, 100);
+  squareWaveTest(90, 100, 100);
 
   // Test 5 - Super short, hilariously fast pulses.
-  //squareWaveTest(225, 40, 40);
+  squareWaveTest(225, 40, 40);
 }
 
 void randomTestSet() {
