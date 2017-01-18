@@ -124,6 +124,7 @@ def stream():
         elif line == 'Exit':
             if not streaming:
                 print('Received \'Exit\' command.')
+                set_speed_adjust(0)
                 return 0
             else:
                 print('Received \'Exit\' command while streaming. Ignoring.')
