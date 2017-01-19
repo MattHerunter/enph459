@@ -1,6 +1,6 @@
 // Must be the same value as in Python script
-#define ARDUINO_BAUDRATE 57600
-#define SAMPLE_TIME_MICROS 2000
+#define ARDUINO_BAUDRATE 115200
+#define SAMPLE_TIME_MICROS 500
 
 // Pin that controls the heating element MOSFET
 #define MOSFET_GATE_PIN 2
@@ -14,7 +14,7 @@
 #define FDC_FINAL 4000
 
 // Constant array to hold the pins reading from the thermocouples
-const int ANALOG_INS[] = {4, 5};
+const int ANALOG_INS[] = {0, 1};
 
 // Number of pins reading from thermocouples
 const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
@@ -39,9 +39,10 @@ void loop() {
   // Tests
   for (int fdc = FDC_START; fdc <= FDC_FINAL; fdc += FDC_DELTA) {
     setFDC(fdc);
-    squareWaveTest(3, 3000, 3000);
+    //squareWaveTest(3, 3000, 3000);
     //squareWaveTestSet();
-    //randomTestSet();
+    randomTestSet();
+    randomDeltaTestSet();
   }
 
   // Finished
@@ -111,6 +112,19 @@ void randomTest(unsigned long total_time, unsigned long max_pulse) {
   stopTest();
 }
 
+// Stochastic square pulse test
+void randomDeltaTest(unsigned long total_time, unsigned long max_spacing, unsigned long pulse_length) {
+  startTest();
+  unsigned long start = millis();
+  while (millis() - start < total_time) {
+    digitalWrite(2, HIGH);
+    streamData(pulse_length);
+    digitalWrite(2, LOW);
+    streamData(random(max_spacing));
+  }
+  stopTest();
+}
+
 // Regular square pulse test
 void squareWaveTest(int num_pulses, unsigned long pulse_high, unsigned long pulse_low) {
   startTest();
@@ -168,5 +182,18 @@ void randomTestSet() {
 
   // Faster.
   randomTest(18000, 100);
+}
+
+void randomDeltaTestSet() {
+  // put your main code here, to run repeatedly:
+
+  // Stochastic signal.
+  randomDeltaTest(18000, 500,50);
+
+  // Faster.
+  randomDeltaTest(18000, 200,20);
+
+  // Faster.
+  randomDeltaTest(18000, 100,10);
 }
 

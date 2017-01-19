@@ -18,10 +18,10 @@ from time import sleep
 import os
 
 # ---IP Address of the Controller---
-controllerAddress = '192.168.137.175'
+controllerAddress = '192.168.137.229'
 
 # ---Arduino Serial Port Settings---
-ARDUINO_BAUDRATE = 57600
+ARDUINO_BAUDRATE = 115200
 FAN_START_FDC = 1500
 
 # ---Exit Codes---
@@ -37,7 +37,7 @@ FAN_START_FDC = 1500
 # Time:dt   - Send the sample time in microseconds dt
 
 
-# Main data acquisition method
+# Main data acquisition method+
 def stream():
     # Create the serial object and set the port, baud rate, and timeout
     ser = serial.Serial()
@@ -124,6 +124,7 @@ def stream():
         elif line == 'Exit':
             if not streaming:
                 print('Received \'Exit\' command.')
+                set_speed_adjust(0)
                 return 0
             else:
                 print('Received \'Exit\' command while streaming. Ignoring.')
