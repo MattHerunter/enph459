@@ -18,7 +18,7 @@ from time import sleep
 import os
 
 # ---IP Address of the Controller---
-controllerAddress = '192.168.137.229'
+controllerAddress = '192.168.137.160'
 
 # ---Arduino Serial Port Settings---
 ARDUINO_BAUDRATE = 115200
@@ -54,12 +54,11 @@ def stream():
     # Initialize the streaming flag to false
     streaming = False
 
-    # Initialize the FDC, RPM, test number, sample time, and time to 0
+    # Initialize the FDC, RPM, test number and sample time, and time to 0
     fdc = 0
     rpm = 0
-    test = 0
-    dt = 0
-    t = 0
+    test_num = 0
+    ts = 0
 
     # Set the fan speed adjust to On and start the fan
     set_speed_adjust(1)
@@ -81,10 +80,10 @@ def stream():
                 print('Received \'Start\' command.')
                 streaming = True
                 # Open a timestamped .csv file to append data to
-                filename = directory_path + '\\fdc'+str(fdc)+'rpm'+str(rpm)+'_'+str(test)+'_'\
-                    + datetime.now().strftime('%H-%M')+'.csv'
+                filename = directory_path + '\\fdc'+str(fdc)+'rpm'+str(rpm)+'ts'+str(ts)+'_'+str(test_num)\
+                    + datetime.now().strftime('_%H-%M-%S')+'.csv'
                 out_file = open(filename, mode='a')
-                test += 1
+                test_num += 1
             else:
                 print('Received \'Start\' command while streaming. Ignoring.')
         
@@ -108,7 +107,7 @@ def stream():
                 sleep(w)
                 rpm = get_rpm()
                 # Arduino will repeat the same test for new FDC/RPM
-                test = 0
+                test_num = 0
             else:
                 print('Received \'Set\' command while streaming. Ignoring.')
 
@@ -132,7 +131,6 @@ def stream():
         # Not a command, and currently streaming data
         elif streaming:
             out_file.write(line + '\n')
-            t += dt
 
     print('Serial port unexpectedly closed.')
     set_speed_adjust(0)
