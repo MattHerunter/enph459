@@ -1,7 +1,7 @@
 % Function to import directory of .csv files into a single cell array
 function data = importData(varargin)
     if(nargin == 1)
-        dataDir = varargin(1);
+        dataDir = varargin{1};
     else
        dataDir = uigetdir(); 
     end
