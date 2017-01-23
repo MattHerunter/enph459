@@ -1,6 +1,6 @@
 // Must be the same value as in Python script
 #define ARDUINO_BAUDRATE 115200
-#define SAMPLE_TIME_MICROS 500
+#define SAMPLE_TIME_MICROS 4000
 
 // Pin that controls the heating element MOSFET
 #define MOSFET_GATE_PIN 2
@@ -8,10 +8,11 @@
 // Number of seconds to wait after updating the fan duty cycle
 #define FAN_ADJUST_TIME 3
 
-// Fan Duty Cycle Settings
+// Fan Duty Cycle Settings (scaled down by a factor of 100)
 #define FDC_START 1200
-#define FDC_DELTA 100
-#define FDC_FINAL 4000
+#define FDC_FINAL 1900
+#define NUM_FDCS 20
+#define FDC_SQ_DELTA ((sqrt(FDC_FINAL)-sqrt(FDC_START))/NUM_FDCS)
 
 // Constant array to hold the pins reading from the thermocouples
 const int ANALOG_INS[] = {0, 1};
@@ -35,16 +36,23 @@ void setup() {
 
 // Loops forever
 void loop() {
+  int fdc;
   delay(4000);
   // Tests
-  for (int fdc = FDC_START; fdc <= FDC_FINAL; fdc += FDC_DELTA) {
+  for(int i = 0; i <= NUM_FDCS; i++){
+    fdc = (sqrt(FDC_START)+i*FDC_SQ_DELTA)*(sqrt(FDC_START)+i*FDC_SQ_DELTA);
     setFDC(fdc);
-    //squareWaveTest(3, 3000, 3000);
-    //squareWaveTestSet();
     randomTestSet();
-    randomDeltaTestSet();
   }
-
+  
+  /*
+  for (int fdc_sq = sqrt(FDC_START); fdc_sq <= FDC_FINAL; fdc_sq += FDC_SQ_DELTA) {
+    fdc = 100*sqrt(fdc_sq);
+    setFDC(fdc);
+    randomTestSet();
+  }
+  */
+  
   // Finished
   exitProgram();
 
@@ -137,21 +145,6 @@ void squareWaveTest(int num_pulses, unsigned long pulse_high, unsigned long puls
   stopTest();
 }
 
-/*
-// Train of delta pulses with random density
-void deltaTest(unsigned long total_time, unsigned long pulse_width, int percentPulseProbability) {
-  startTest();
-  unsigned long start = millis();
-  while (millis() - start < total_time) {
-    digitalWrite(2, HIGH);
-    streamData(random(max_pulse));
-    digitalWrite(2, LOW);
-    streamData(random(max_pulse));
-  }
-  stopTest();
-}
-*/
-
 void squareWaveTestSet() {
   // put your main code here, to run repeatedly:
 
@@ -175,25 +168,25 @@ void randomTestSet() {
   // put your main code here, to run repeatedly:
 
   // Stochastic signal.
+  randomTest(18000, 1000);
+
+  // Stochastic signal.
   randomTest(18000, 500);
 
   // Faster.
-  randomTest(18000, 200);
+  randomTest(18000, 250);
 
   // Faster.
-  randomTest(18000, 100);
+  randomTest(18000, 125);
 }
 
 void randomDeltaTestSet() {
   // put your main code here, to run repeatedly:
 
   // Stochastic signal.
-  randomDeltaTest(18000, 500,50);
+  randomDeltaTest(18000, 1000,20);
 
   // Faster.
-  randomDeltaTest(18000, 200,20);
-
-  // Faster.
-  randomDeltaTest(18000, 100,10);
+  randomDeltaTest(18000, 500,20);
 }
 
