@@ -114,8 +114,8 @@ def stream():
         # Received a 'Time' command
         elif 'Time' in line:
             if not streaming:
-                dt = int(line.split(':')[1])
-                print('Received \'Time\' command. Sample time is ' + str(dt) + ' microseconds.')
+                ts = int(line.split(':')[1])
+                print('Received \'Time\' command. Sample time is ' + str(ts) + ' microseconds.')
             else:
                 print('Received \'Time\' command while streaming. Ignoring.')
 

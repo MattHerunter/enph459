@@ -13,7 +13,7 @@ function data = importData(varargin)
     n = numel(files);
     
     names = {files.name}';
-    C = regexp(names,'fdc(\d+)rpm\d+_(\d+)_','tokens');
+    C = regexp(names,'fdc(\d+).*_(\d+)_','tokens');
     C = [C{:}]';
     A = zeros(numel(C),1);
     for jj=1:numel(C)
@@ -31,8 +31,8 @@ function data = importData(varargin)
         % File names are in format 'fdcXXXrpmXXXtsXXX_testNumber_timestamp'
         name = files(ii).name;
         
-        settings = regexp(name,'fdc(\d+)rpm(\d+)ts(\d+)_(\d+)');
-        
+        settings = regexp(name,'fdc(\d+)rpm(\d+)ts(\d+)_(\d+)','tokens');
+        settings = settings{:};
 %         % Extract FDC, RPM, and test number
 %         fdc = name(4:regexp(name,'rpm')-1);
 %         rpm = name((regexp(name,'rpm')+3):(regexp(name,'_.*')-1));
