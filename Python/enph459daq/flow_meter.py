@@ -15,7 +15,7 @@ import ast
 from time import sleep
 
 # ---IP Address of the Controller---
-controllerAddress = '192.168.137.42'
+controllerAddress = '192.168.137.7'
 
 # ---Arduino Serial Port Settings---
 ARDUINO_BAUDRATE = 115200
@@ -57,6 +57,11 @@ def flow_meter():
     buffer1.extend(numpy.zeros(BUFFER_SIZE, dtype='f'))
     buffer2 = RingBuffer(BUFFER_SIZE)
     buffer2.extend(numpy.zeros(BUFFER_SIZE, dtype='f'))
+
+    # Filter
+    fs = 250
+    cutoff = 200
+    filt_b, filt_a = signal.butter(2, cutoff / (fs / 2), 'low', analog=False)
 
     # Loop index for testing
     iteration = 0
@@ -121,9 +126,10 @@ def flow_meter():
             iteration += 1
             if (iteration % 200) == 0:
                 matplotlib.pyplot.clf()
-                matplotlib.pyplot.plot(buffer1.get())
+                matplotlib.pyplot.plot(signal.filtfilt(filt_b, filt_a, buffer1.get()))
                 matplotlib.pyplot.plot(buffer2.get())
                 matplotlib.pyplot.pause(0.0001)
+                print(get_flow_rate(buffer1, buffer2))
 
     print('Serial port unexpectedly closed.')
     set_speed_adjust(0)
@@ -149,7 +155,7 @@ class RingBuffer():
 
 
 def get_flow_rate(buffer1, buffer2):
-    numpy.argmax(signal.correlate(normalize(buffer1.get()), normalize(buffer2.get()))) - (BUFFER_SIZE - 1)
+    return numpy.argmax(signal.correlate(normalize(buffer2.get()), normalize(buffer1.get()))) - (BUFFER_SIZE - 1)
 
 
 # Method to normalize arrays
