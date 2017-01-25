@@ -32,7 +32,7 @@ void setup() {
   // Initialization
   Serial.begin(ARDUINO_BAUDRATE);
   setFDC(FDC_START);
-
+  sendSampleTime();
   startTest();
 }
 

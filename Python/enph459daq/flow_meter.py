@@ -1,79 +1,72 @@
-# Imports for reading from the serial port
-import serial
-import serial.tools.list_ports
+# Imports for reading from the Arduino
+import arduino
+
+# Imports for signal processing
 from scipy import signal
-import numpy
-import matplotlib.pyplot
+import numpy as np
+import matplotlib.pyplot as plt
 
 # Imports for sending/receiving controller commands
-import requests
-from requests.auth import HTTPBasicAuth
-import json
-import ast
+import controller as ctrl
 
 # Import for waiting for the fan to adjust
 from time import sleep
 
-# ---IP Address of the Controller---
-controllerAddress = '192.168.137.7'
-
-# ---Arduino Serial Port Settings---
-ARDUINO_BAUDRATE = 115200
+# ---Settings---
 FAN_START_FDC = 1500
-BUFFER_SIZE = 1000
+BUFFER_SIZE = 2000
 
 # ---Exit Codes---
 # 0 - Exited normally due to 'Exit' command from Arduino
 # 1 - Exited because no Arduino boards could be found
 # 2 - Exited because the serial port closed unexpectedly
 
-# ---List of Arduino Commands---
-# Start     - Start streaming data to file
-# Stop      - Stop streaming data to file
-# Set:fdc:w - Send a command to the controller to set the FDC to fdc. Arduino will wait w seconds for the fan to adjust.
-# Exit      - Done data collection, exit program
-# Time:dt   - Send the sample time in microseconds dt
 
-
-# Main data acquisition method
+# Main flow calculation method
 def flow_meter():
     # Create the serial object and set the port, baud rate, and timeout
-    ser = serial.Serial()
-    ser.port = find_arduino_port()
-    ser.baudrate = ARDUINO_BAUDRATE
-    ser.timeout = 1
+    arduino_port = arduino.ArduinoPort()
 
     # Exit if no Arduino devices were found
-    if ser.port is None:
-        set_speed_adjust(0)
+    if arduino_port.arduino_serial is None:
+        ctrl.set_speed_adjust(0)
         return 1
-    ser.open()
 
     # Initialize the streaming flag to false
     streaming = False
 
     # Initialize the data buffers to zeros
-    buffer1 = RingBuffer(BUFFER_SIZE)
-    buffer1.extend(numpy.zeros(BUFFER_SIZE, dtype='f'))
-    buffer2 = RingBuffer(BUFFER_SIZE)
-    buffer2.extend(numpy.zeros(BUFFER_SIZE, dtype='f'))
+    tc1 = DataBuffer(BUFFER_SIZE)
+    tc1.push(np.zeros(BUFFER_SIZE, dtype='f'))
+    tc2 = DataBuffer(BUFFER_SIZE)
+    tc2.push(np.zeros(BUFFER_SIZE, dtype='f'))
+    flow_rate = DataBuffer(BUFFER_SIZE)
+    flow_rate.push(np.zeros(BUFFER_SIZE, dtype='f'))
+    rpm = DataBuffer(BUFFER_SIZE)
+    rpm.push(np.zeros(BUFFER_SIZE, dtype='f'))
+    tc1_filt = tc1.get()
+    tc2_filt = tc2.get()
+    tof_delay = 0
 
-    # Filter
-    fs = 250
-    cutoff = 200
-    filt_b, filt_a = signal.butter(2, cutoff / (fs / 2), 'low', analog=False)
+    # Filter with default sample rate
+    fs = 10.0E6/4000
+    cutoff = 20.0
+    filter_b, filter_a = signal.butter(2, [cutoff / (fs / 2)], btype='low', analog=False)
 
     # Loop index for testing
     iteration = 0
 
+    # Figure for plotting
+    plt.figure(1)
+
     # Set the fan speed adjust to On and start the fan
-    set_speed_adjust(1)
-    set_fdc(FAN_START_FDC)
+    ctrl.set_speed_adjust(1)
+    ctrl.set_fdc(FAN_START_FDC)
 
     # Continuously read from the serial port
-    while ser.isOpen():
+    while arduino_port.is_open():
         # Read a line (terminated by '\n') from the serial port, and strip of the trailing '\n'
-        line = ser.readline().rstrip()
+        line = arduino_port.read_line()
 
         # Received a 'Start' command
         if line == 'Start':
@@ -97,7 +90,7 @@ def flow_meter():
                 fdc = int(line.split(':')[1])
                 w = int(line.split(':')[2])
                 print('Received \'Set\' command for ' + str(fdc) + '.')
-                set_fdc(fdc)
+                ctrl.set_fdc(fdc)
                 sleep(w)
             else:
                 print('Received \'Set\' command while streaming. Ignoring.')
@@ -106,6 +99,9 @@ def flow_meter():
         elif 'Time' in line:
             if not streaming:
                 ts = int(line.split(':')[1])
+                # Update filter
+                fs = 10.0E6/ts
+                filter_b, filter_a = signal.butter(2, [cutoff / (fs / 2)], btype='low', analog=False)
                 print('Received \'Time\' command. Sample time is ' + str(ts) + ' microseconds.')
             else:
                 print('Received \'Time\' command while streaming. Ignoring.')
@@ -114,156 +110,95 @@ def flow_meter():
         elif line == 'Exit':
             if not streaming:
                 print('Received \'Exit\' command.')
-                set_speed_adjust(0)
+                ctrl.set_speed_adjust(0)
                 return 0
             else:
                 print('Received \'Exit\' command while streaming. Ignoring.')
         
         # Not a command, and currently streaming data
         elif streaming:
-            buffer1.extend(int(line.split(',')[0])*numpy.ones(1, dtype='f'))
-            buffer2.extend(int(line.split(',')[1])*numpy.ones(1, dtype='f'))
+            # Update thermocouple data buffers
+            try:
+                tc1.push(int(line.split(',')[0]) * np.ones(1, dtype='f'))
+                tc2.push(int(line.split(',')[1])*np.ones(1, dtype='f'))
+            except:
+                print('Unparsable thermocouple data! Using previous values.')
+
+            # Might be slow so only update every 50 iterations
+            if (iteration % 50) == 0:
+                # Update rpm buffer
+                rpm.push(ctrl.get_rpm() * np.ones(1, dtype='f'))
+                # Filtered thermocouple data
+                tc1_filt = signal.filtfilt(filter_b, filter_a, tc1.get())
+                tc2_filt = signal.filtfilt(filter_b, filter_a, tc2.get())
+
+                # Delay
+                tof_delay = get_flow_rate(tc1_filt, tc2_filt)
+
+                # Unscaled flow rate
+                if tof_delay == 0:
+                    unscaled_flow_rate = 0
+                else:
+                    unscaled_flow_rate = 1.0 / tof_delay
+                flow_rate.push(unscaled_flow_rate * np.ones(1, dtype='f'))
+
             iteration += 1
             if (iteration % 200) == 0:
-                matplotlib.pyplot.clf()
-                matplotlib.pyplot.plot(signal.filtfilt(filt_b, filt_a, buffer1.get()))
-                matplotlib.pyplot.plot(buffer2.get())
-                matplotlib.pyplot.pause(0.0001)
-                print(get_flow_rate(buffer1, buffer2))
 
-    print('Serial port unexpectedly closed.')
-    set_speed_adjust(0)
+                # Plotting
+                plt.figure(1)
+                plt.clf()
+
+                # Filtered thermocouple buffers
+                plt.subplot(311)
+                plt.plot(tc1_filt)
+                plt.plot(tc2_filt)
+
+                # Unscaled flow rate
+                plt.subplot(312)
+                plt.plot(flow_rate.get()[-BUFFER_SIZE / 10:])
+
+                # RPM
+                plt.subplot(313)
+                plt.plot(rpm.get()[-BUFFER_SIZE / 10:])
+
+                plt.pause(0.0001)
+
+                print(tof_delay)
+
+    print('Arduino port unexpectedly closed.')
+    ctrl.set_speed_adjust(0)
     return 2
 
 
-class RingBuffer():
+class DataBuffer:
     # A 1D ring buffer using numpy arrays
     def __init__(self, length):
-        self.data = numpy.zeros(length, dtype='f')
+        self.data = np.zeros(length, dtype='f')
         self.index = 0
 
-    def extend(self, x):
+    def push(self, x):
         # Adds array x to ring buffer
-        x_index = (self.index + numpy.arange(x.size)) % self.data.size
+        x_index = (self.index + np.arange(x.size)) % self.data.size
         self.data[x_index] = x
         self.index = x_index[-1] + 1
 
     def get(self):
         # Returns the first-in-first-out data in the ring buffer
-        idx = (self.index + numpy.arange(self.data.size)) %self.data.size
+        idx = (self.index + np.arange(self.data.size)) % self.data.size
         return self.data[idx]
 
 
-def get_flow_rate(buffer1, buffer2):
-    return numpy.argmax(signal.correlate(normalize(buffer2.get()), normalize(buffer1.get()))) - (BUFFER_SIZE - 1)
+def get_flow_rate(signal1, signal2):
+    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE - 1)
 
 
 # Method to normalize arrays
 def normalize(array):
-    normalized_array = array - numpy.mean(array)
+    normalized_array = array - np.mean(array)
     normalized_array /= max(abs(normalized_array))
     return normalized_array
 
-
-# Method to find the serial port the Arduino is connected to
-def find_arduino_port():
-    # Get a list of ports that have 'Arduino' in their description
-    arduino_ports = [p.device for p in serial.tools.list_ports.comports() if 'Arduino' in p.description]
-
-    # Found multiple Arduino devices
-    if len(arduino_ports) > 1:
-        print('Multiple Arduino devices were found:')
-        for number, name in enumerate(arduino_ports):
-            print('\t' + name + '\t(' + str(number) + ')')
-        arduino_port = arduino_ports[int(input('Enter the number of the port you want to use: '))]
-
-    # Found one Arduino device
-    elif len(arduino_ports) == 1:
-        print('Arduino device found at ' + arduino_ports[0] + '.')
-        arduino_port = arduino_ports[0]
-
-    # Found no Arduino devices
-    else:
-        print('No Arduino devices were found!')
-        arduino_port = None
-
-    return arduino_port
-
-# Method to set the fan duty cycle on the controller
-def set_fdc(fdc):
-    if 1200 <= fdc <= 12000:
-        command = 'http://' + controllerAddress + '/cgi-bin/bc2-cgi?json=' + '{ \'object_no\' : 21 , \'boiler_no\' : ' \
-                                                                             '0 , \'FanDuty\' : ' + str(
-            fdc) + ', \'Update\' : ' + str(get_update_number('FanDuty')) + '}'
-        requests.get(command, auth=HTTPBasicAuth('admin', 'IBC-c3h8'), timeout=1)
-    else:
-        print(str(fdc) + ' is outside the fan operating range of 1200 to 12000. set_fdc failed!')
-
-# Method to set the fan speed adjust (allows duty cycle override) on the controller
-def set_speed_adjust(mode):
-    command = 'http://' + controllerAddress + '/cgi-bin/bc2-cgi?json=' + '{ \'object_no\' : 21 , \'boiler_no\' : 0 , ' \
-                                                                         '\'SpeedAdjust\' : ' + str(
-        mode) + ', \'Update\' : ' + str(get_update_number('SpeedAdjust')) + '}'
-    requests.get(command, auth=HTTPBasicAuth('admin', 'IBC-c3h8'), timeout=1)
-
-# Method to get the rpm from the controller
-def get_rpm():
-    command = 'http://' + controllerAddress + '/cgi-bin/bc2-cgi?json=' + '{ \'object_no\' : 100 , \'object_request\' ' \
-                                                                         ': 43 ,\'boiler_no\' : 0 }'
-    request = requests.get(command, auth=HTTPBasicAuth('admin', 'IBC-c3h8'), timeout=1)
-    # Parse the json sent back by the controller
-    try:
-        d = ast.literal_eval(json.dumps(request.json()).replace('false', 'False').replace('true', 'True'))
-        rpm = d['FanSpeed']
-    except ValueError:
-        print('get_rpm() failed!')
-        rpm = None
-    return rpm
-
-# Method to get the update number for a given parameter. 'param' could be a list of parameters if needed in the future.
-def get_update_number(param):
-    update_number = 0
-
-    if 'HeatOut' in param:
-        update_number |= (2 ** 0)
-
-    if 'FanTarget' in param:
-        update_number |= (2 ** 1)
-
-    if 'FanDuty' in param:
-        update_number |= (2 ** 2)
-
-    if 'SpeedAdjust' in param:
-        update_number |= (2 ** 7)
-
-    if 'FanTest' in param:
-        update_number |= (2 ** 8)
-
-    if 'VentFactor' in param:
-        update_number |= (2 ** 4)
-
-    if 'UlPurgeDisable' in param:
-        update_number |= (2 ** 11)
-
-    if 'VentFactorDisable' in param:
-        update_number |= (2 ** 12)
-
-    if 'BlockedVentDisable' in param:
-        update_number |= (2 ** 13)
-
-    if 'AltitudeDisable' in param:
-        update_number |= (2 ** 14)
-
-    if 'AirAdjust' in param:
-        update_number |= (2 ** 9)
-
-    if 'ZeroAdjust' in param:
-        update_number |= (2 ** 10)
-
-    if 'HeatCalls' in param:
-        update_number |= (2 ** 18)
-
-    return update_number
 
 # This gets called when this is run as a script
 if __name__ == '__main__':
