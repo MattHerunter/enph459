@@ -19,7 +19,7 @@ import random
 
 # ---Settings---
 FAN_START_FDC = 1500
-BUFFER_SIZE = 1000
+BUFFER_SIZE = 4000
 
 # ---Exit Codes---
 # 0 - Exited normally due to 'Exit' command from Arduino
@@ -75,7 +75,7 @@ class FuncThread(threading.Thread):
 def fake_data_thread(tc1, tc2):
     # A thread that generates fake data, for testing when Arduino is unavailable
 
-    delay = 20
+    delay = 0
 
     fake_buffer = DataBuffer(delay+1)
     fake_buffer.push(np.zeros(delay+1, dtype='f'))
@@ -170,7 +170,7 @@ def controller_thread(tc1, tc2):
             # Update thermocouple data buffers
             try:
                 tc1.push(int(line.split(',')[0]) * np.ones(1, dtype='f'))
-                tc2.push(int(line.split(',')[1])*np.ones(1, dtype='f'))
+                tc2.push(int(line.split(',')[1]) * np.ones(1, dtype='f'))
             except:
                 print('Invalid thermocouple data! Data buffers not modified.')
 
@@ -187,7 +187,7 @@ def calculator_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
         tc2_filt = signal.filtfilt(filter_b, filter_a, tc2.get())
 
         # Delay
-        tof_delay = get_flow_rate(tc1_filt, tc2_filt)
+        tof_delay = get_flow_rate(tc1.get(), tc2.get())
 
         # Unscaled flow rate
         if tof_delay == 0:
@@ -195,16 +195,7 @@ def calculator_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
         else:
             unscaled_flow_rate = 1.0 / tof_delay
         flow_rate.push(tof_delay * np.ones(1, dtype='f'))
-
-
-class PlotUpdater(QtCore.QTimer):
-    def __init__(self, timeout, *args):
-        self._timeout = timeout
-        self._args = args
-        QtCore.QTimer.__init__(self)
-
-    def run(self):
-        self._target(*self._args)
+        print(tof_delay)
 
 
 def plotter_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
@@ -222,9 +213,11 @@ def plotter_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
     ptc1 = plot_signals.plot(pen='y')
     ptc2 = plot_signals.plot(pen='g')
 
+    win.nextRow()
     plot_flow_rate = win.addPlot(title="Flow Rate")
     pfr = plot_flow_rate.plot(pen='y')
 
+    win.nextRow()
     plot_rpm = win.addPlot(title="RPM")
     prpm = plot_rpm.plot(pen='y')
 
@@ -232,8 +225,8 @@ def plotter_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
         tc1_filt = signal.filtfilt(filter_b, filter_a, tc1.get())
         tc2_filt = signal.filtfilt(filter_b, filter_a, tc2.get())
 
-        ptc1.setData(tc1_filt)
-        ptc2.setData(tc2_filt)
+        ptc1.setData(tc1.get())
+        ptc2.setData(tc2.get())
         pfr.setData(flow_rate.get())
         prpm.setData(rpm.get())
 
@@ -242,6 +235,7 @@ def plotter_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
     timer.start(50)
 
     app.exec_()
+
 
 def rpm_thread(rpm):
     # A thread that calculates flow rates from the current data and records fan RPM
