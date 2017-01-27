@@ -3,6 +3,7 @@ import arduino
 
 # Imports for signal processing
 from scipy import signal
+from scipy import interpolate
 import numpy as np
 import matplotlib.pyplot as plt
 from pyqtgraph.Qt import QtGui, QtCore
@@ -16,10 +17,33 @@ from time import sleep
 
 import threading
 import random
+from datetime import datetime
 
 # ---Settings---
 FAN_START_FDC = 1500
-BUFFER_SIZE = 4000
+BUFFER_SIZE = 2000
+FILTER_CUTOFF = 30.0
+INTERP_FACTOR = 1.0
+
+# ---Globals---
+curr_rpm = 0
+curr_flow_rate = 0
+
+
+class GlobalFilter():
+    def __init__(self, dt, cutoff):
+        fs = 1.0E6/dt
+        self.filter_b, self.filter_a = signal.butter(2, [cutoff / (fs / 2.0)], btype='low', analog=False)
+
+    def update(self, dt, cutoff):
+        fs = 1.0E6/dt
+        self.filter_b, self.filter_a = signal.butter(2, [cutoff / (fs / 2.0)], btype='low', analog=False)
+
+    def filtfilt(self, data):
+        return signal.filtfilt(self.filter_b, self.filter_a, data.get())
+
+
+tc_filter = GlobalFilter(1000.0, FILTER_CUTOFF)
 
 # ---Exit Codes---
 # 0 - Exited normally due to 'Exit' command from Arduino
@@ -38,20 +62,12 @@ def flow_meter():
     flow_rate.push(np.zeros(BUFFER_SIZE, dtype='f'))
     rpm = DataBuffer(BUFFER_SIZE)
     rpm.push(np.zeros(BUFFER_SIZE, dtype='f'))
-    tc1_filt = tc1.get()
-    tc2_filt = tc2.get()
-    tof_delay = 0
-
-    # Filter with default sample rate
-    fs = 10.0E6/4000
-    cutoff = 20.0
-    filter_b, filter_a = signal.butter(2, [cutoff / (fs / 2)], btype='low', analog=False)
 
     # Thread initialization
-    controller = FuncThread(fake_data_thread, tc1, tc2)
-    calculator = FuncThread(calculator_thread, tc1, tc2, flow_rate, rpm, filter_a, filter_b)
+    controller = FuncThread(controller_thread, tc1, tc2, flow_rate, rpm)
+    calculator = FuncThread(calculator_thread, tc1, tc2)
     calculator.daemon = True
-    plotter = FuncThread(plotter_thread, tc1, tc2, flow_rate, rpm, filter_a, filter_b)
+    plotter = FuncThread(plotter_thread, tc1, tc2, flow_rate, rpm)
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread, rpm)
     rpm_getter.daemon = True
@@ -59,8 +75,7 @@ def flow_meter():
     controller.start()
     calculator.start()
     plotter.start()
-    #rpm_getter.start()
-
+    rpm_getter.start()
 
 class FuncThread(threading.Thread):
     def __init__(self, target, *args):
@@ -72,10 +87,10 @@ class FuncThread(threading.Thread):
         self._target(*self._args)
 
 
-def fake_data_thread(tc1, tc2):
+def fake_data_thread(tc1, tc2, flow_rate, rpm):
     # A thread that generates fake data, for testing when Arduino is unavailable
 
-    delay = 0
+    delay = 20
 
     fake_buffer = DataBuffer(delay+1)
     fake_buffer.push(np.zeros(delay+1, dtype='f'))
@@ -90,15 +105,20 @@ def fake_data_thread(tc1, tc2):
         tc1.push(fake_data[delay] * np.ones(1, dtype='f'))
         tc2.push(fake_data[0] * np.ones(1, dtype='f'))
 
+        flow_rate.push(curr_flow_rate * np.ones(1, dtype='f'))
+        rpm.push(curr_rpm * np.ones(1, dtype='f'))
+
         sleep(0.002)
 
 
-def controller_thread(tc1, tc2):
+def controller_thread(tc1, tc2, flow_rate, rpm):
     # A thread that controls the fan and manages Arduino communications, including data acquisition
+    global tc_filter
 
     # Set the fan speed adjust to On and start the fan
-    ctrl.set_speed_adjust(1)
-    ctrl.set_fdc(FAN_START_FDC)
+    if ctrl.get_rpm() == 0:
+        ctrl.set_speed_adjust(1)
+        ctrl.set_fdc(FAN_START_FDC)
 
     # Create the serial object and set the port, baud rate, and timeout
     arduino_port = arduino.ArduinoPort()
@@ -149,9 +169,9 @@ def controller_thread(tc1, tc2):
             if not streaming:
                 ts = int(line.split(':')[1])
                 # Update filter
-                fs = 10.0E6/ts
-                cutoff = 20.0
-                filter_b, filter_a = signal.butter(2, [cutoff / (fs / 2)], btype='low', analog=False)
+                fs = 1.0E6/ts
+                cutoff = FILTER_CUTOFF
+                tc_filter.update(fs, cutoff)
                 print('Received \'Time\' command. Sample time is ' + str(ts) + ' microseconds.')
             else:
                 print('Received \'Time\' command while streaming. Ignoring.')
@@ -171,6 +191,8 @@ def controller_thread(tc1, tc2):
             try:
                 tc1.push(int(line.split(',')[0]) * np.ones(1, dtype='f'))
                 tc2.push(int(line.split(',')[1]) * np.ones(1, dtype='f'))
+                flow_rate.push(curr_flow_rate * np.ones(1, dtype='f'))
+                rpm.push(curr_rpm * np.ones(1, dtype='f'))
             except:
                 print('Invalid thermocouple data! Data buffers not modified.')
 
@@ -179,32 +201,37 @@ def controller_thread(tc1, tc2):
     return 2
 
 
-def calculator_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
+def calculator_thread(tc1, tc2):
     # A thread that calculates flow rates from the current data and records fan RPM
+    global tc_filter
+    global curr_flow_rate
+
     while True:
         # Filtered thermocouple data
-        tc1_filt = signal.filtfilt(filter_b, filter_a, tc1.get())
-        tc2_filt = signal.filtfilt(filter_b, filter_a, tc2.get())
+        #x = np.arange(0, BUFFER_SIZE)
+        tc1_filt = tc_filter.filtfilt(tc1)
+        tc2_filt = tc_filter.filtfilt(tc2)
+        #f1_interp = interpolate.interp1d(x, tc1_filt)
+        #f2_interp = interpolate.interp1d(x, tc2_filt)
+
+        #xnew = 1.0/INTERP_FACTOR * np.arange(0, INTERP_FACTOR*(BUFFER_SIZE-1))
+
+        #tc1_interp = f1_interp(xnew)
+        #tc2_interp = f2_interp(xnew)
 
         # Delay
-        tof_delay = get_flow_rate(tc1.get(), tc2.get())
-
-        # Unscaled flow rate
-        if tof_delay == 0:
-            unscaled_flow_rate = 0
-        else:
-            unscaled_flow_rate = 1.0 / tof_delay
-        flow_rate.push(tof_delay * np.ones(1, dtype='f'))
-        print(tof_delay)
+        tof_delay = get_flow_rate(tc1_filt, tc2_filt)
+        curr_flow_rate = tof_delay
 
 
-def plotter_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
+def plotter_thread(tc1, tc2, flow_rate, rpm):
     # A thread that continuously plots the data
+    global tc_filter
 
     app = QtGui.QApplication([])
 
     win = pyqtgraph.GraphicsWindow(title="Basic plotting examples")
-    win.resize(1000, 600)
+    win.resize(1000, 900)
     win.setWindowTitle('pyqtgraph example: Plotting')
 
     pyqtgraph.setConfigOptions(antialias=True)
@@ -214,20 +241,28 @@ def plotter_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
     ptc2 = plot_signals.plot(pen='g')
 
     win.nextRow()
-    plot_flow_rate = win.addPlot(title="Flow Rate")
+    plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
+    plot_flow_rate.setYRange(0, 40, padding=0)
+
+    win.nextRow()
+    plot_velocity = win.addPlot(title="Scaled Velocity")
+    pvel = plot_velocity.plot(pen='y')
+    plot_velocity.setYRange(0,0.25,padding=0)
 
     win.nextRow()
     plot_rpm = win.addPlot(title="RPM")
     prpm = plot_rpm.plot(pen='y')
+    plot_rpm.setYRange(0, 2500, padding=0)
 
     def update():
-        tc1_filt = signal.filtfilt(filter_b, filter_a, tc1.get())
-        tc2_filt = signal.filtfilt(filter_b, filter_a, tc2.get())
+        tc1_filt = tc_filter.filtfilt(tc1)
+        tc2_filt = tc_filter.filtfilt(tc2)
 
-        ptc1.setData(tc1.get())
-        ptc2.setData(tc2.get())
+        ptc1.setData(tc1_filt)
+        ptc2.setData(tc2_filt)
         pfr.setData(flow_rate.get())
+        pvel.setData(1.0/(flow_rate.get()+1.0E-6))
         prpm.setData(rpm.get())
 
     timer = QtCore.QTimer()
@@ -239,9 +274,11 @@ def plotter_thread(tc1, tc2, flow_rate, rpm, filter_a, filter_b):
 
 def rpm_thread(rpm):
     # A thread that calculates flow rates from the current data and records fan RPM
+    global curr_rpm
+
     while True:
         # Update rpm buffer
-        rpm.push(ctrl.get_rpm() * np.ones(1, dtype='f'))
+        curr_rpm = ctrl.get_rpm()
 
 
 class DataBuffer:
@@ -274,6 +311,7 @@ class DataBuffer:
 
 
 def get_flow_rate(signal1, signal2):
+    #return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
     return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE - 1)
 
 

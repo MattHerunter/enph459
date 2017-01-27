@@ -1,6 +1,6 @@
 // Must be the same value as in Python script
 #define ARDUINO_BAUDRATE 115200
-#define SAMPLE_TIME_MICROS 4000
+#define SAMPLE_TIME_MICROS 1000
 
 // Pin that controls the heating element MOSFET
 #define MOSFET_GATE_PIN 2
@@ -31,19 +31,20 @@ const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
 void setup() {
   // Initialization
   Serial.begin(ARDUINO_BAUDRATE);
-  setFDC(FDC_START);
+  //setFDC(FDC_START);
   sendSampleTime();
   startTest();
 }
 
 // Loops forever
 void loop() {
-  int max_pulse = 500;
+  int high_pulse = 200;
+  int low_pulse = 200;
   
   digitalWrite(2, HIGH);
-  streamData(random(max_pulse));
+  streamData(random(high_pulse));
   digitalWrite(2, LOW);
-  streamData(random(max_pulse));
+  streamData(random(low_pulse));
 }
 
 // Writes data read from the analog ports to the serial ports
