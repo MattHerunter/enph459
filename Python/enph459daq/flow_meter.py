@@ -22,7 +22,7 @@ from datetime import datetime
 # ---Settings---
 FAN_START_FDC = 1500
 BUFFER_SIZE = 2000
-FILTER_CUTOFF = 30.0
+FILTER_CUTOFF = 25.0
 INTERP_FACTOR = 1.0
 
 # ---Globals---
@@ -208,19 +208,19 @@ def calculator_thread(tc1, tc2):
 
     while True:
         # Filtered thermocouple data
-        #x = np.arange(0, BUFFER_SIZE)
+        x = np.arange(0, BUFFER_SIZE)
         tc1_filt = tc_filter.filtfilt(tc1)
         tc2_filt = tc_filter.filtfilt(tc2)
-        #f1_interp = interpolate.interp1d(x, tc1_filt)
-        #f2_interp = interpolate.interp1d(x, tc2_filt)
+        f1_interp = interpolate.interp1d(x, tc1_filt)
+        f2_interp = interpolate.interp1d(x, tc2_filt)
 
-        #xnew = 1.0/INTERP_FACTOR * np.arange(0, INTERP_FACTOR*(BUFFER_SIZE-1))
+        xnew = 1.0/INTERP_FACTOR * np.arange(0, INTERP_FACTOR*(BUFFER_SIZE-1))
 
-        #tc1_interp = f1_interp(xnew)
-        #tc2_interp = f2_interp(xnew)
+        tc1_interp = f1_interp(xnew)
+        tc2_interp = f2_interp(xnew)
 
         # Delay
-        tof_delay = get_flow_rate(tc1_filt, tc2_filt)
+        tof_delay = get_flow_rate(tc1_interp, tc2_interp)/INTERP_FACTOR
         curr_flow_rate = tof_delay
 
 
@@ -243,12 +243,12 @@ def plotter_thread(tc1, tc2, flow_rate, rpm):
     win.nextRow()
     plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
-    plot_flow_rate.setYRange(0, 40, padding=0)
+    plot_flow_rate.setYRange(0, 100, padding=0)
 
     win.nextRow()
     plot_velocity = win.addPlot(title="Scaled Velocity")
     pvel = plot_velocity.plot(pen='y')
-    plot_velocity.setYRange(0,0.25,padding=0)
+    plot_velocity.setYRange(0,0.0001,padding=0)
 
     win.nextRow()
     plot_rpm = win.addPlot(title="RPM")
@@ -262,7 +262,7 @@ def plotter_thread(tc1, tc2, flow_rate, rpm):
         ptc1.setData(tc1_filt)
         ptc2.setData(tc2_filt)
         pfr.setData(flow_rate.get())
-        pvel.setData(1.0/(flow_rate.get()+1.0E-6))
+        pvel.setData(1.0/(np.multiply((flow_rate.get()+1.0E-6),(rpm.get()+1.0E-6))))
         prpm.setData(rpm.get())
 
     timer = QtCore.QTimer()
@@ -311,8 +311,8 @@ class DataBuffer:
 
 
 def get_flow_rate(signal1, signal2):
-    #return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
-    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE - 1)
+    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
+    #return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE - 1)
 
 
 # Method to normalize arrays
