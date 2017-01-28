@@ -64,7 +64,7 @@ def flow_meter():
     rpm.push(np.zeros(BUFFER_SIZE, dtype='f'))
 
     # Thread initialization
-    controller = FuncThread(controller_thread, tc1, tc2, flow_rate, rpm)
+    controller = FuncThread(fake_data_thread, tc1, tc2, flow_rate, rpm)
     calculator = FuncThread(calculator_thread, tc1, tc2)
     calculator.daemon = True
     plotter = FuncThread(plotter_thread, tc1, tc2, flow_rate, rpm)
@@ -75,7 +75,7 @@ def flow_meter():
     controller.start()
     calculator.start()
     plotter.start()
-    rpm_getter.start()
+    #rpm_getter.start()
 
 class FuncThread(threading.Thread):
     def __init__(self, target, *args):
@@ -102,13 +102,14 @@ def fake_data_thread(tc1, tc2, flow_rate, rpm):
         fake_buffer.push(curr * np.ones(1, dtype='f'))
 
         fake_data = fake_buffer.get()
-        tc1.push(fake_data[delay] * np.ones(1, dtype='f'))
-        tc2.push(fake_data[0] * np.ones(1, dtype='f'))
+        tc1.push(fake_data[delay] * np.ones(1, dtype='f') + random.randint(-10,10))
+        tc2.push(fake_data[0] * np.ones(1, dtype='f') + random.randint(-10,10))
 
         flow_rate.push(curr_flow_rate * np.ones(1, dtype='f'))
         rpm.push(curr_rpm * np.ones(1, dtype='f'))
 
-        sleep(0.002)
+        for i in range(0,40):
+            print(0)
 
 
 def controller_thread(tc1, tc2, flow_rate, rpm):
@@ -208,19 +209,20 @@ def calculator_thread(tc1, tc2):
 
     while True:
         # Filtered thermocouple data
-        x = np.arange(0, BUFFER_SIZE)
+        #x = np.arange(0, BUFFER_SIZE)
         tc1_filt = tc_filter.filtfilt(tc1)
         tc2_filt = tc_filter.filtfilt(tc2)
-        f1_interp = interpolate.interp1d(x, tc1_filt)
-        f2_interp = interpolate.interp1d(x, tc2_filt)
+        #f1_interp = interpolate.interp1d(x, tc1_filt)
+        #f2_interp = interpolate.interp1d(x, tc2_filt)
 
-        xnew = 1.0/INTERP_FACTOR * np.arange(0, INTERP_FACTOR*(BUFFER_SIZE-1))
+        #xnew = 1.0/INTERP_FACTOR * np.arange(0, INTERP_FACTOR*(BUFFER_SIZE-1))
 
-        tc1_interp = f1_interp(xnew)
-        tc2_interp = f2_interp(xnew)
+        #tc1_interp = f1_interp(xnew)
+        #tc2_interp = f2_interp(xnew)
 
         # Delay
-        tof_delay = get_flow_rate(tc1_interp, tc2_interp)/INTERP_FACTOR
+        tof_delay = get_flow_rate(tc1_filt, tc2_filt)
+        #tof_delay = get_flow_rate(tc1_interp, tc2_interp)/INTERP_FACTOR
         curr_flow_rate = tof_delay
 
 
@@ -243,7 +245,7 @@ def plotter_thread(tc1, tc2, flow_rate, rpm):
     win.nextRow()
     plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
-    plot_flow_rate.setYRange(0, 100, padding=0)
+    plot_flow_rate.setYRange(10, 30, padding=0)
 
     win.nextRow()
     plot_velocity = win.addPlot(title="Scaled Velocity")
@@ -311,8 +313,8 @@ class DataBuffer:
 
 
 def get_flow_rate(signal1, signal2):
-    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
-    #return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE - 1)
+    #return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
+    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE - 1)
 
 
 # Method to normalize arrays
