@@ -39,12 +39,12 @@ void setup() {
 // Loops forever
 void loop() {
   int high_pulse = 200;
-  int low_pulse = 200;
+  int low_pulse = 1500;
   
   digitalWrite(2, HIGH);
-  streamData(random(high_pulse));
+  streamData(max(100,random(high_pulse)));
   digitalWrite(2, LOW);
-  streamData(random(low_pulse));
+  streamData(max(800,random(low_pulse)));
 }
 
 // Writes data read from the analog ports to the serial ports

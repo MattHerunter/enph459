@@ -40,7 +40,7 @@ class GlobalFilter():
         self.filter_b, self.filter_a = signal.butter(2, [cutoff / (fs / 2.0)], btype='low', analog=False)
 
     def filtfilt(self, data):
-        return signal.filtfilt(self.filter_b, self.filter_a, data.get())
+        return signal.filtfilt(self.filter_b, self.filter_a, data)
 
 
 tc_filter = GlobalFilter(1000.0, FILTER_CUTOFF)
@@ -54,20 +54,19 @@ tc_filter = GlobalFilter(1000.0, FILTER_CUTOFF)
 def flow_meter():
 
     # Initialize the data buffers to zeros
-    tc1 = DataBuffer(BUFFER_SIZE)
-    tc1.push(np.zeros(BUFFER_SIZE, dtype='f'))
-    tc2 = DataBuffer(BUFFER_SIZE)
-    tc2.push(np.zeros(BUFFER_SIZE, dtype='f'))
+    tc_data = DataList(BUFFER_SIZE,2)
+    tc_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(2)]
+    tc_data.push(tc_init)
     flow_rate = DataBuffer(BUFFER_SIZE)
     flow_rate.push(np.zeros(BUFFER_SIZE, dtype='f'))
     rpm = DataBuffer(BUFFER_SIZE)
     rpm.push(np.zeros(BUFFER_SIZE, dtype='f'))
 
     # Thread initialization
-    controller = FuncThread(fake_data_thread, tc1, tc2, flow_rate, rpm)
-    calculator = FuncThread(calculator_thread, tc1, tc2)
+    controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
+    calculator = FuncThread(calculator_thread, tc_data)
     calculator.daemon = True
-    plotter = FuncThread(plotter_thread, tc1, tc2, flow_rate, rpm)
+    plotter = FuncThread(plotter_thread, tc_data, flow_rate, rpm)
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread, rpm)
     rpm_getter.daemon = True
@@ -75,7 +74,7 @@ def flow_meter():
     controller.start()
     calculator.start()
     plotter.start()
-    #rpm_getter.start()
+    rpm_getter.start()
 
 class FuncThread(threading.Thread):
     def __init__(self, target, *args):
@@ -87,7 +86,7 @@ class FuncThread(threading.Thread):
         self._target(*self._args)
 
 
-def fake_data_thread(tc1, tc2, flow_rate, rpm):
+def fake_data_thread(tc_data, flow_rate, rpm):
     # A thread that generates fake data, for testing when Arduino is unavailable
 
     delay = 20
@@ -102,17 +101,18 @@ def fake_data_thread(tc1, tc2, flow_rate, rpm):
         fake_buffer.push(curr * np.ones(1, dtype='f'))
 
         fake_data = fake_buffer.get()
-        tc1.push(fake_data[delay] * np.ones(1, dtype='f') + random.randint(-10,10))
-        tc2.push(fake_data[0] * np.ones(1, dtype='f') + random.randint(-10,10))
+        data_push = [fake_data[delay] * np.ones(1, dtype='f') + random.randint(-10,10), fake_data[0] * np.ones(1, dtype='f') + random.randint(-10,10)]
+        #data_push = [fake_data[delay] * np.ones(1, dtype='f'), fake_data[0] * np.ones(1, dtype='f')]
+        tc_data.push(data_push)
 
         flow_rate.push(curr_flow_rate * np.ones(1, dtype='f'))
         rpm.push(curr_rpm * np.ones(1, dtype='f'))
 
-        for i in range(0,40):
+        for i in range(0,100):
             print(0)
 
 
-def controller_thread(tc1, tc2, flow_rate, rpm):
+def controller_thread(tc_data, flow_rate, rpm):
     # A thread that controls the fan and manages Arduino communications, including data acquisition
     global tc_filter
 
@@ -190,8 +190,8 @@ def controller_thread(tc1, tc2, flow_rate, rpm):
         elif streaming:
             # Update thermocouple data buffers
             try:
-                tc1.push(int(line.split(',')[0]) * np.ones(1, dtype='f'))
-                tc2.push(int(line.split(',')[1]) * np.ones(1, dtype='f'))
+                push_data = [int(line.split(',')[0]) * np.ones(1, dtype='f'), int(line.split(',')[1]) * np.ones(1, dtype='f')]
+                tc_data.push(push_data)
                 flow_rate.push(curr_flow_rate * np.ones(1, dtype='f'))
                 rpm.push(curr_rpm * np.ones(1, dtype='f'))
             except:
@@ -202,16 +202,17 @@ def controller_thread(tc1, tc2, flow_rate, rpm):
     return 2
 
 
-def calculator_thread(tc1, tc2):
+def calculator_thread(tc_data):
     # A thread that calculates flow rates from the current data and records fan RPM
     global tc_filter
     global curr_flow_rate
 
     while True:
         # Filtered thermocouple data
+        data = tc_data.get()
         #x = np.arange(0, BUFFER_SIZE)
-        tc1_filt = tc_filter.filtfilt(tc1)
-        tc2_filt = tc_filter.filtfilt(tc2)
+        tc1_filt = tc_filter.filtfilt(data[0])
+        tc2_filt = tc_filter.filtfilt(data[1])
         #f1_interp = interpolate.interp1d(x, tc1_filt)
         #f2_interp = interpolate.interp1d(x, tc2_filt)
 
@@ -222,11 +223,12 @@ def calculator_thread(tc1, tc2):
 
         # Delay
         tof_delay = get_flow_rate(tc1_filt, tc2_filt)
+        #tof_delay = get_flow_rate(tc1_filt, tc2_filt)
         #tof_delay = get_flow_rate(tc1_interp, tc2_interp)/INTERP_FACTOR
         curr_flow_rate = tof_delay
 
 
-def plotter_thread(tc1, tc2, flow_rate, rpm):
+def plotter_thread(tc_data, flow_rate, rpm):
     # A thread that continuously plots the data
     global tc_filter
 
@@ -258,11 +260,12 @@ def plotter_thread(tc1, tc2, flow_rate, rpm):
     plot_rpm.setYRange(0, 2500, padding=0)
 
     def update():
-        tc1_filt = tc_filter.filtfilt(tc1)
-        tc2_filt = tc_filter.filtfilt(tc2)
+        data = tc_data.get()
+        tc1_filt = tc_filter.filtfilt(data[0])
+        tc2_filt = tc_filter.filtfilt(data[1])
 
-        ptc1.setData(tc1_filt)
-        ptc2.setData(tc2_filt)
+        ptc1.setData(np.diff(normalize(tc1_filt)))
+        ptc2.setData(np.diff(normalize(tc2_filt)))
         pfr.setData(flow_rate.get())
         pvel.setData(1.0/(np.multiply((flow_rate.get()+1.0E-6),(rpm.get()+1.0E-6))))
         prpm.setData(rpm.get())
@@ -311,10 +314,36 @@ class DataBuffer:
 
         return current_data
 
+class DataList:
+    # A list of DataBuffer objects that must be modified simultaneously
+    def __init__(self, length, num_buffers):
+        self.buffers = [DataBuffer(length) for i in range(num_buffers)]
+        self.buffer_length = length
+        self.num_buffers = num_buffers
+        self.lock = threading.Lock()
+
+    def push(self, x_arr):
+        self.lock.acquire()
+
+        for i in range(self.num_buffers):
+            self.buffers[i].push(x_arr[i])
+
+        self.lock.release()
+
+    def get(self):
+        self.lock.acquire()
+
+        current_data = [np.zeros(self.buffer_length) for i in range(self.num_buffers)]
+        for i in range(self.num_buffers):
+            current_data[i] = self.buffers[i].get()
+
+        self.lock.release()
+
+        return current_data
 
 def get_flow_rate(signal1, signal2):
-    #return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
-    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE - 1)
+    # return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
+    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (np.size(signal1) - 1)
 
 
 # Method to normalize arrays
