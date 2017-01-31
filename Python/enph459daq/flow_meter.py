@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph
+import Tkinter
 
 # Imports for sending/receiving controller commands
 import controller as ctrl
@@ -63,7 +64,8 @@ def flow_meter():
     rpm.push(np.zeros(BUFFER_SIZE, dtype='f'))
 
     # Thread initialization
-    controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
+    #controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
+    controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm)
     calculator = FuncThread(calculator_thread, tc_data)
     calculator.daemon = True
     plotter = FuncThread(plotter_thread, tc_data, flow_rate, rpm)
@@ -74,7 +76,7 @@ def flow_meter():
     controller.start()
     calculator.start()
     plotter.start()
-    rpm_getter.start()
+    #rpm_getter.start()
 
 class FuncThread(threading.Thread):
     def __init__(self, target, *args):
@@ -101,7 +103,7 @@ def fake_data_thread(tc_data, flow_rate, rpm):
         fake_buffer.push(curr * np.ones(1, dtype='f'))
 
         fake_data = fake_buffer.get()
-        data_push = [fake_data[delay] * np.ones(1, dtype='f') + random.randint(-10,10), fake_data[0] * np.ones(1, dtype='f') + random.randint(-10,10)]
+        data_push = [fake_data[delay] * np.ones(1, dtype='f') + random.randint(-5,5), fake_data[0] * np.ones(1, dtype='f') + random.randint(-5,5)]
         #data_push = [fake_data[delay] * np.ones(1, dtype='f'), fake_data[0] * np.ones(1, dtype='f')]
         tc_data.push(data_push)
 
@@ -232,9 +234,22 @@ def plotter_thread(tc_data, flow_rate, rpm):
     # A thread that continuously plots the data
     global tc_filter
 
+    class plot_window(pyqtgraph.GraphicsWindow):
+
+        def __init__(self):
+            pyqtgraph.GraphicsWindow.__init__(self, title="Flow Meter Plots")
+            self.paused = False
+            print("smash")
+
+        def keyPressEvent(self, event):
+            key = event.key()
+            if key == QtCore.Qt.Key_P :
+                self.paused = self.paused == False
+
+
     app = QtGui.QApplication([])
 
-    win = pyqtgraph.GraphicsWindow(title="Basic plotting examples")
+    win = plot_window()
     win.resize(1000, 900)
     win.setWindowTitle('pyqtgraph example: Plotting')
 
@@ -260,15 +275,16 @@ def plotter_thread(tc_data, flow_rate, rpm):
     plot_rpm.setYRange(0, 2500, padding=0)
 
     def update():
-        data = tc_data.get()
-        tc1_filt = tc_filter.filtfilt(data[0])
-        tc2_filt = tc_filter.filtfilt(data[1])
+        if(win.paused == False):
+            data = tc_data.get()
+            tc1_filt = tc_filter.filtfilt(data[0])
+            tc2_filt = tc_filter.filtfilt(data[1])
 
-        ptc1.setData(np.diff(normalize(tc1_filt)))
-        ptc2.setData(np.diff(normalize(tc2_filt)))
-        pfr.setData(flow_rate.get())
-        pvel.setData(1.0/(np.multiply((flow_rate.get()+1.0E-6),(rpm.get()+1.0E-6))))
-        prpm.setData(rpm.get())
+            ptc1.setData((np.diff(normalize(tc1_filt))))
+            ptc2.setData((np.diff(normalize(tc2_filt))))
+            pfr.setData(flow_rate.get())
+            pvel.setData(1.0/(np.multiply((flow_rate.get()+1.0E-6),(rpm.get()+1.0E-6))))
+            prpm.setData(rpm.get())
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
@@ -343,7 +359,8 @@ class DataList:
 
 def get_flow_rate(signal1, signal2):
     # return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
-    return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (np.size(signal1) - 1)
+    # return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (np.size(signal1) - 1)
+    return np.argmax(signal.correlate((np.diff(normalize(signal2))), (np.diff(normalize(signal1))))) - (np.size(signal1) - 1)
 
 
 # Method to normalize arrays
