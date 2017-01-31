@@ -3,9 +3,8 @@ import arduino
 
 # Imports for signal processing
 from scipy import signal
-from scipy import interpolate
+# from scipy import interpolate
 import numpy as np
-import matplotlib.pyplot as plt
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph
 import Tkinter
@@ -18,7 +17,6 @@ from time import sleep
 
 import threading
 import random
-from datetime import datetime
 
 # ---Settings---
 FAN_START_FDC = 1500
@@ -31,7 +29,7 @@ curr_rpm = 0
 curr_flow_rate = 0
 
 
-class GlobalFilter():
+class GlobalFilter:
     def __init__(self, dt, cutoff):
         fs = 1.0E6/dt
         self.filter_b, self.filter_a = signal.butter(2, [cutoff / (fs / 2.0)], btype='low', analog=False)
@@ -51,11 +49,12 @@ tc_filter = GlobalFilter(1000.0, FILTER_CUTOFF)
 # 1 - Exited because no Arduino boards could be found
 # 2 - Exited because the serial port closed unexpectedly
 
+
 # Main flow calculation method
 def flow_meter():
 
     # Initialize the data buffers to zeros
-    tc_data = DataList(BUFFER_SIZE,2)
+    tc_data = DataList(BUFFER_SIZE, 2)
     tc_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(2)]
     tc_data.push(tc_init)
     flow_rate = DataBuffer(BUFFER_SIZE)
@@ -64,7 +63,9 @@ def flow_meter():
     rpm.push(np.zeros(BUFFER_SIZE, dtype='f'))
 
     # Thread initialization
-    #controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
+    # If using an Arduino
+    # controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
+    # If fake data is being used
     controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm)
     calculator = FuncThread(calculator_thread, tc_data)
     calculator.daemon = True
@@ -76,7 +77,8 @@ def flow_meter():
     controller.start()
     calculator.start()
     plotter.start()
-    #rpm_getter.start()
+    # Comment this out if no Arduino connected
+    # rpm_getter.start()
 
 class FuncThread(threading.Thread):
     def __init__(self, target, *args):
@@ -99,18 +101,19 @@ def fake_data_thread(tc_data, flow_rate, rpm):
     curr = 0
 
     while True:
-        curr += random.randint(-1,1)*random.randint(-1,1)*random.randint(-1,1)
+        curr += random.randint(-1, 1)*random.randint(-1, 1)*random.randint(-1, 1)
         fake_buffer.push(curr * np.ones(1, dtype='f'))
-
+        noise = 5
         fake_data = fake_buffer.get()
-        data_push = [fake_data[delay] * np.ones(1, dtype='f') + random.randint(-5,5), fake_data[0] * np.ones(1, dtype='f') + random.randint(-5,5)]
-        #data_push = [fake_data[delay] * np.ones(1, dtype='f'), fake_data[0] * np.ones(1, dtype='f')]
+        data_push = [fake_data[delay] * np.ones(1, dtype='f') + random.randint(-noise, noise),
+                     fake_data[0] * np.ones(1, dtype='f') + random.randint(-noise, noise)]
+        # data_push = [fake_data[delay] * np.ones(1, dtype='f'), fake_data[0] * np.ones(1, dtype='f')]
         tc_data.push(data_push)
 
         flow_rate.push(curr_flow_rate * np.ones(1, dtype='f'))
         rpm.push(curr_rpm * np.ones(1, dtype='f'))
 
-        for i in range(0,100):
+        for i in range(0, 100):
             print(0)
 
 
@@ -196,7 +199,7 @@ def controller_thread(tc_data, flow_rate, rpm):
                 tc_data.push(push_data)
                 flow_rate.push(curr_flow_rate * np.ones(1, dtype='f'))
                 rpm.push(curr_rpm * np.ones(1, dtype='f'))
-            except:
+            except ValueError:
                 print('Invalid thermocouple data! Data buffers not modified.')
 
     print('Arduino port unexpectedly closed.')
@@ -225,7 +228,6 @@ def calculator_thread(tc_data):
 
         # Delay
         tof_delay = get_flow_rate(tc1_filt, tc2_filt)
-        #tof_delay = get_flow_rate(tc1_filt, tc2_filt)
         #tof_delay = get_flow_rate(tc1_interp, tc2_interp)/INTERP_FACTOR
         curr_flow_rate = tof_delay
 
@@ -280,10 +282,12 @@ def plotter_thread(tc_data, flow_rate, rpm):
             tc1_filt = tc_filter.filtfilt(data[0])
             tc2_filt = tc_filter.filtfilt(data[1])
 
-            ptc1.setData((np.diff(normalize(tc1_filt))))
-            ptc2.setData((np.diff(normalize(tc2_filt))))
+            ptc1.setData(np.diff(normalize(tc1_filt)))
+            ptc2.setData(np.diff(normalize(tc2_filt)))
+            #ptc1.setData(heuristic_filter(tc1_filt))
+            #ptc2.setData(heuristic_filter(tc2_filt))
             pfr.setData(flow_rate.get())
-            pvel.setData(1.0/(np.multiply((flow_rate.get()+1.0E-6),(rpm.get()+1.0E-6))))
+            pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
             prpm.setData(rpm.get())
 
     timer = QtCore.QTimer()
@@ -293,7 +297,7 @@ def plotter_thread(tc_data, flow_rate, rpm):
     app.exec_()
 
 
-def rpm_thread(rpm):
+def rpm_thread():
     # A thread that calculates flow rates from the current data and records fan RPM
     global curr_rpm
 
@@ -330,6 +334,7 @@ class DataBuffer:
 
         return current_data
 
+
 class DataList:
     # A list of DataBuffer objects that must be modified simultaneously
     def __init__(self, length, num_buffers):
@@ -357,10 +362,29 @@ class DataList:
 
         return current_data
 
+
 def get_flow_rate(signal1, signal2):
     # return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
     # return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (np.size(signal1) - 1)
     return np.argmax(signal.correlate((np.diff(normalize(signal2))), (np.diff(normalize(signal1))))) - (np.size(signal1) - 1)
+    #return np.argmax(signal.correlate(heuristic_filter(signal2), heuristic_filter(signal1))) - (np.size(signal1) - 1)
+
+
+def heuristic_filter(signal):
+    signal_sign = np.sign(np.diff(normalize(signal)))
+    pulse_idxs = np.where(abs(np.diff(signal_sign)) == 2)
+    pulse_lengths = np.diff(pulse_idxs)
+    signal_filtered = signal_sign
+    # defined in the Arduino
+    min_low_time = 30
+    min_high_time = 30
+    for jj in range(0, np.size(pulse_lengths)):
+        if signal_sign[pulse_idxs[0][jj]] == -1 and pulse_lengths[0][jj] < min_low_time:
+            signal_filtered[pulse_idxs[0][jj]:pulse_idxs[0][jj+1]] = 0
+        elif signal_sign[pulse_idxs[0][jj]] == 1 and pulse_lengths[0][jj] < min_high_time:
+            signal_filtered[pulse_idxs[0][jj]:pulse_idxs[0][jj + 1]] = 0
+
+    return signal_filtered
 
 
 # Method to normalize arrays
@@ -372,4 +396,6 @@ def normalize(array):
 
 # This gets called when this is run as a script
 if __name__ == '__main__':
-    flow_meter()
+    testing = False
+    if not testing:
+        flow_meter()
