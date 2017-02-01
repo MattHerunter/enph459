@@ -24,7 +24,7 @@ import random
 
 # ---Settings---
 FAN_START_FDC = 1500
-BUFFER_SIZE = 5000
+BUFFER_SIZE = 1000
 FILTER_CUTOFF = 25.0
 INTERP_FACTOR = 1.0
 
