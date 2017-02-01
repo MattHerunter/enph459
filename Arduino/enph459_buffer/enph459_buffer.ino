@@ -38,13 +38,16 @@ void setup() {
 
 // Loops forever
 void loop() {
-  int high_pulse = 200;
-  int low_pulse = 1500;
-  
-  digitalWrite(2, HIGH);
-  streamData(max(100,random(high_pulse)));
-  digitalWrite(2, LOW);
-  streamData(max(800,random(low_pulse)));
+  float starting_freq_khz = 3.0f / 1000;
+  unsigned long chirp_length_millis = 3000;
+  float freq_khz_slope = (0.1f - starting_freq_khz) / (10*chirp_length_millis);
+  chirpSignal(starting_freq_khz, freq_khz_slope, chirp_length_millis);
+//    int high_pulse = 1000;
+//    int low_pulse = 1000;
+//    digitalWrite(2, HIGH);
+//    streamData(high_pulse);
+//    digitalWrite(2, LOW);
+//    streamData(low_pulse);
 }
 
 // Writes data read from the analog ports to the serial ports
@@ -61,6 +64,31 @@ void streamData(unsigned long time_millis) {
   }
 }
 
+
+// Code for up chirp signal
+void chirpSignal(float starting_freq_khz, float freq_khz_slope, unsigned long chirp_length_millis) {
+  int time_millis = (int)(1.0 / starting_freq_khz);
+  float freq_khz = starting_freq_khz;
+  unsigned long start_time_millis = millis();
+  while (millis() - start_time_millis < chirp_length_millis) {
+    time_millis = (int)(1.0 / freq_khz);
+    //freq_khz = exp(log(freq_khz)+time_millis * freq_khz_slope);
+    //freq_khz = log(exp(freq_khz)+time_millis * freq_khz_slope);
+    freq_khz += time_millis * freq_khz_slope;
+    digitalWrite(MOSFET_GATE_PIN, HIGH);
+    streamData(time_millis);
+
+    time_millis = (int)(1.0 / freq_khz);
+    //freq_khz = exp(log(freq_khz)+time_millis * freq_khz_slope);
+    //freq_khz = log(exp(freq_khz)+time_millis * freq_khz_slope);
+    freq_khz += time_millis * freq_khz_slope;
+    digitalWrite(MOSFET_GATE_PIN, LOW);
+    streamData(time_millis);
+  }
+}
+
+
+//---------------Python Commands Beneath Here---------------
 // Called at the start of every test
 void startTest() {
   delay(4000);
