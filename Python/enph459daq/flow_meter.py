@@ -5,9 +5,13 @@ import arduino
 from scipy import signal
 # from scipy import interpolate
 import numpy as np
+import matplotlib.pyplot as plt
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph
 import Tkinter
+import pywt
+import pywt._thresholding
+import wden
 
 # Imports for sending/receiving controller commands
 import controller as ctrl
@@ -20,7 +24,7 @@ import random
 
 # ---Settings---
 FAN_START_FDC = 1500
-BUFFER_SIZE = 2000
+BUFFER_SIZE = 5000
 FILTER_CUTOFF = 25.0
 INTERP_FACTOR = 1.0
 
@@ -39,7 +43,14 @@ class GlobalFilter:
         self.filter_b, self.filter_a = signal.butter(2, [cutoff / (fs / 2.0)], btype='low', analog=False)
 
     def filtfilt(self, data):
-        return signal.filtfilt(self.filter_b, self.filter_a, data)
+        #return signal.filtfilt(self.filter_b, self.filter_a, data)
+
+        wavelet = 'coif8'
+        coeffs = pywt.wavedec(signal.filtfilt(self.filter_b, self.filter_a, data),wavelet,level=4)
+        threshold = 1
+        newcoeffs = map(lambda x: pywt._thresholding.soft(x, threshold),coeffs)
+        return pywt.waverec(newcoeffs,wavelet)
+        #return wden.wden(signal.filtfilt(self.filter_b, self.filter_a, data),'sqtwolog','soft','mln',4,'db2')
 
 
 tc_filter = GlobalFilter(1000.0, FILTER_CUTOFF)
@@ -64,9 +75,9 @@ def flow_meter():
 
     # Thread initialization
     # If using an Arduino
-    # controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
+    controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
     # If fake data is being used
-    controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm)
+    #controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm)
     calculator = FuncThread(calculator_thread, tc_data)
     calculator.daemon = True
     plotter = FuncThread(plotter_thread, tc_data, flow_rate, rpm)
@@ -78,7 +89,7 @@ def flow_meter():
     calculator.start()
     plotter.start()
     # Comment this out if no Arduino connected
-    # rpm_getter.start()
+    rpm_getter.start()
 
 class FuncThread(threading.Thread):
     def __init__(self, target, *args):
@@ -103,7 +114,7 @@ def fake_data_thread(tc_data, flow_rate, rpm):
     while True:
         curr += random.randint(-1, 1)*random.randint(-1, 1)*random.randint(-1, 1)
         fake_buffer.push(curr * np.ones(1, dtype='f'))
-        noise = 5
+        noise = 10
         fake_data = fake_buffer.get()
         data_push = [fake_data[delay] * np.ones(1, dtype='f') + random.randint(-noise, noise),
                      fake_data[0] * np.ones(1, dtype='f') + random.randint(-noise, noise)]
@@ -282,8 +293,8 @@ def plotter_thread(tc_data, flow_rate, rpm):
             tc1_filt = tc_filter.filtfilt(data[0])
             tc2_filt = tc_filter.filtfilt(data[1])
 
-            ptc1.setData(np.diff(normalize(tc1_filt)))
-            ptc2.setData(np.diff(normalize(tc2_filt)))
+            ptc1.setData((normalize(tc1_filt)))
+            ptc2.setData((normalize(tc2_filt)))
             #ptc1.setData(heuristic_filter(tc1_filt))
             #ptc2.setData(heuristic_filter(tc2_filt))
             pfr.setData(flow_rate.get())
@@ -366,7 +377,7 @@ class DataList:
 def get_flow_rate(signal1, signal2):
     # return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (BUFFER_SIZE*INTERP_FACTOR - 1)
     # return np.argmax(signal.correlate(np.diff(normalize(signal2)), np.diff(normalize(signal1)))) - (np.size(signal1) - 1)
-    return np.argmax(signal.correlate((np.diff(normalize(signal2))), (np.diff(normalize(signal1))))) - (np.size(signal1) - 1)
+    return np.argmax(signal.correlate((np.diff(normalize(signal2))), (np.diff(normalize(signal1))))) - (np.size(signal1) - 2)
     #return np.argmax(signal.correlate(heuristic_filter(signal2), heuristic_filter(signal1))) - (np.size(signal1) - 1)
 
 
@@ -399,3 +410,6 @@ if __name__ == '__main__':
     testing = False
     if not testing:
         flow_meter()
+    else:
+        a = 0
+
