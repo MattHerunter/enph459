@@ -1,5 +1,7 @@
 // Must be the same value as in Python script
 #define ARDUINO_BAUDRATE 115200
+
+// Sample time in microseconds
 #define SAMPLE_TIME_MICROS 1000
 
 // Pin that controls the heating element MOSFET
@@ -7,12 +9,6 @@
 
 // Number of seconds to wait after updating the fan duty cycle
 #define FAN_ADJUST_TIME 3
-
-// Fan Duty Cycle Settings (scaled down by a factor of 100)
-#define FDC_START 1200
-#define FDC_FINAL 1900
-#define NUM_FDCS 20
-#define FDC_SQ_DELTA ((sqrt(FDC_FINAL)-sqrt(FDC_START))/NUM_FDCS)
 
 // Constant array to hold the pins reading from the thermocouples
 const int ANALOG_INS[] = {0, 1};
@@ -24,36 +20,35 @@ const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
 int HEATER_STATUS = 0;
 
 // ---List of Python Commands---
-// Start     - Start streaming data to file
-// Stop      - Stop streaming data to file
+// Start     - Start streaming data
+// Stop      - Stop streaming data
 // Set:fdc:w - Send a command to the controller to set the FDC to fdc. Arduino will wait w seconds for the fan to adjust.
-// Exit      - Done data collection, exit program
+// Exit      - Exit program
 // Time:dt   - Send the sample time in microseconds dt
 
 // Runs once at beginning
 void setup() {
   // Initialization
   Serial.begin(ARDUINO_BAUDRATE);
-  //setFDC(FDC_START);
   sendSampleTime();
   startTest();
 }
 
 // Loops forever
 void loop() {
-  float starting_freq_khz = 3.0f / 1000;
-  unsigned long chirp_length_millis = 2000;
-  float freq_khz_slope = (0.1f - starting_freq_khz) / (10 * chirp_length_millis);
+  float starting_freq_khz = 2.0f / 1000;
+  unsigned long chirp_length_millis = 5000;
+  float freq_khz_slope = (0.1f - starting_freq_khz) / (50000);
   chirpSignal(starting_freq_khz, freq_khz_slope, chirp_length_millis);
-  //    int high_pulse = 1000;
-  //    int low_pulse = 1000;
-  //    turnHeaterOn();
-  //    streamData(high_pulse);
-  //    turnHeaterOff();
-  //    streamData(low_pulse);
+  //  int high_pulse = 150+random(100);
+  //  int low_pulse = 150+random(100);
+  //  turnHeaterOn();
+  //  streamData(high_pulse);
+  //  turnHeaterOff();
+  //  streamData(low_pulse);
 }
 
-// Writes data read from the analog ports to the serial ports
+// Writes data read from the analog ports to the serial ports in format HEATER_STATUS, TC1, TC2...\n
 void streamData(unsigned long time_millis) {
   int num_samples = time_millis * 1000 / SAMPLE_TIME_MICROS;
   for (int ii = 0; ii < num_samples; ii++) {
