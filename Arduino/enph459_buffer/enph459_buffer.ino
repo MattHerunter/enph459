@@ -20,6 +20,9 @@ const int ANALOG_INS[] = {0, 1};
 // Number of pins reading from thermocouples
 const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
 
+// Global holding the status of the heater
+int HEATER_STATUS = 0;
+
 // ---List of Python Commands---
 // Start     - Start streaming data to file
 // Stop      - Stop streaming data to file
@@ -39,15 +42,15 @@ void setup() {
 // Loops forever
 void loop() {
   float starting_freq_khz = 3.0f / 1000;
-  unsigned long chirp_length_millis = 3000;
-  float freq_khz_slope = (0.1f - starting_freq_khz) / (10*chirp_length_millis);
+  unsigned long chirp_length_millis = 2000;
+  float freq_khz_slope = (0.1f - starting_freq_khz) / (10 * chirp_length_millis);
   chirpSignal(starting_freq_khz, freq_khz_slope, chirp_length_millis);
-//    int high_pulse = 1000;
-//    int low_pulse = 1000;
-//    digitalWrite(2, HIGH);
-//    streamData(high_pulse);
-//    digitalWrite(2, LOW);
-//    streamData(low_pulse);
+  //    int high_pulse = 1000;
+  //    int low_pulse = 1000;
+  //    turnHeaterOn();
+  //    streamData(high_pulse);
+  //    turnHeaterOff();
+  //    streamData(low_pulse);
 }
 
 // Writes data read from the analog ports to the serial ports
@@ -55,6 +58,8 @@ void streamData(unsigned long time_millis) {
   int num_samples = time_millis * 1000 / SAMPLE_TIME_MICROS;
   for (int ii = 0; ii < num_samples; ii++) {
     delayMicroseconds(SAMPLE_TIME_MICROS);
+    Serial.print(HEATER_STATUS);
+    Serial.print(",");
     for (int jj = 0; jj < NUM_ANALOG_INS - 1; jj++) {
       Serial.print(analogRead(ANALOG_INS[jj]));
       Serial.print(",");
@@ -75,26 +80,36 @@ void chirpSignal(float starting_freq_khz, float freq_khz_slope, unsigned long ch
     //freq_khz = exp(log(freq_khz)+time_millis * freq_khz_slope);
     //freq_khz = log(exp(freq_khz)+time_millis * freq_khz_slope);
     freq_khz += time_millis * freq_khz_slope;
-    digitalWrite(MOSFET_GATE_PIN, HIGH);
+    turnHeaterOn();
     streamData(time_millis);
 
     time_millis = (int)(1.0 / freq_khz);
     //freq_khz = exp(log(freq_khz)+time_millis * freq_khz_slope);
     //freq_khz = log(exp(freq_khz)+time_millis * freq_khz_slope);
     freq_khz += time_millis * freq_khz_slope;
-    digitalWrite(MOSFET_GATE_PIN, LOW);
+    turnHeaterOff();
     streamData(time_millis);
   }
 }
 
+// Turns the heater on and sets the value of HEATER_STATUS to 1
+void turnHeaterOn() {
+  digitalWrite(MOSFET_GATE_PIN, HIGH);
+  HEATER_STATUS = 1;
+}
 
+// Turns the heater off and sets the value of HEATER_STATUS to 0
+void turnHeaterOff() {
+  digitalWrite(MOSFET_GATE_PIN, LOW);
+  HEATER_STATUS = 0;
+}
 //---------------Python Commands Beneath Here---------------
 // Called at the start of every test
 void startTest() {
   delay(4000);
   Serial.flush();
   Serial.print("Start\n");
-  digitalWrite(MOSFET_GATE_PIN, LOW);
+  turnHeaterOff();
   streamData(1000);
 }
 
