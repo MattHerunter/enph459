@@ -98,10 +98,10 @@ void turnHeaterOn() {
   HEATER_STATUS = 1;
 }
 
-// Turns the heater off and sets the value of HEATER_STATUS to 0
+// Turns the heater off and sets the value of HEATER_STATUS to -1
 void turnHeaterOff() {
   digitalWrite(MOSFET_GATE_PIN, LOW);
-  HEATER_STATUS = 0;
+  HEATER_STATUS = -1;
 }
 //---------------Python Commands Beneath Here---------------
 // Called at the start of every test

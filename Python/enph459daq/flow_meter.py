@@ -258,7 +258,7 @@ def calculator_thread(tc_data):
         # tof_delay = get_flow_rate(tc1_interp, tc2_interp)/INTERP_FACTOR
 
         # Delay
-        tof_delay = get_flow_rate(tc1_filt, tc2_filt)
+        tof_delay = get_flow_rate(tc1_filt, tc2_filt, data[0])
         current_flow_rate = tof_delay
 
 
@@ -306,7 +306,7 @@ def plotter_thread(tc_data, flow_rate, rpm):
     win.nextRow()
     plot_hvs = win.addPlot(title="Heater Voltage Signal")
     phvs = plot_hvs.plot(pen='y')
-    plot_hvs.setYRange(-1, 2, padding=0)
+    plot_hvs.setYRange(-2, 2, padding=0)
 
     def update():
         if not win.paused:
@@ -403,7 +403,7 @@ class DataList:
         return current_data
 
 
-def get_flow_rate(tc1, tc2):
+def get_flow_rate(tc1, tc2, hvs):
     if USE_DIFF:
         tc1 = np.diff(tc1)
         tc2 = np.diff(tc2)
@@ -413,7 +413,10 @@ def get_flow_rate(tc1, tc2):
     if USE_SIGN:
         tc1 = np.sign(tc1)
         tc2 = np.sign(tc2)
-    return np.argmax(signal.correlate(tc2, tc1)) - (np.size(tc1) - 2)
+    tc1_delay = np.argmax(signal.correlate(hvs, tc1)) - (np.size(tc1) - 2)
+    tc2_delay = np.argmax(signal.correlate(hvs, tc2)) - (np.size(tc2) - 2)
+    # return np.argmax(signal.correlate(tc2, tc1)) - (np.size(tc1) - 2)
+    return tc1_delay - tc2_delay
 
 
 def heuristic_filter(signal):
