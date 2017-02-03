@@ -22,6 +22,9 @@ import controller as ctrl
 # Import for waiting for the fan to adjust
 from time import sleep
 
+# Import for time stamping files
+from datetime import datetime
+
 # Import for multithreading
 import threading
 
@@ -111,11 +114,14 @@ def flow_meter():
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread)
     rpm_getter.daemon = True
+    data_getter = FuncThread(data_collector)
+    data_getter.daemon = True
 
     # Start the threads
     controller.start()
     calculator.start()
     plotter.start()
+    data_getter.start()
     # Only start RPM thread if using the test bench
     if arduino_connected:
         rpm_getter.start()
@@ -144,10 +150,12 @@ def fake_data_thread(tc_data, flow_rate, rpm):
 
     while True:
         # Generate next fake data point
-        curr += random.randint(-1, 1)*random.randint(-1, 1)*random.randint(-1, 1)
+        curr_rand = random.randint(-1, 1)*random.randint(-1, 1)*random.randint(-1, 1)
+        curr += curr_rand
         fake_buffer.push(curr * np.ones(1, dtype='f'))
         fake_data = fake_buffer.get()
-        data_push = [fake_data[delay] * np.ones(1, dtype='f') + random.randint(-noise, noise),
+        data_push = [curr_rand * np.ones(1, dtype='f'),
+                     fake_data[delay] * np.ones(1, dtype='f') + random.randint(-noise, noise),
                      fake_data[0] * np.ones(1, dtype='f') + random.randint(-noise, noise)]
 
         # Push the fake data to the data buffers
@@ -157,7 +165,7 @@ def fake_data_thread(tc_data, flow_rate, rpm):
 
         # Gross timing solution since data is not being read from the serial port
         for i in range(0, 100):
-            print(0)
+            a=0#print(0)
 
 
 # A thread that controls the fan and manages Arduino communications, including data acquisition
@@ -246,6 +254,39 @@ def controller_thread(tc_data, flow_rate, rpm):
     print('Arduino port unexpectedly closed.')
     ctrl.set_speed_adjust(0)
     return 2
+
+
+def data_collector():
+    sleep(10)
+
+    outfilename = "flow_rates_" + datetime.now().strftime('%H-%M-%S')
+
+    start_fdc = 1200
+    end_fdc = 2000
+    num_fdcs = 80
+    fdc_sq_delta = (np.sqrt(end_fdc)-np.sqrt(start_fdc))/num_fdcs
+
+    def sample_flow_rate():
+        sleep(0.003)
+        a = 0
+        while a < 1 or a > 100:
+            a = current_flow_rate
+
+        return a
+
+    for i in range(num_fdcs):
+        fdc = (np.sqrt(start_fdc)+i*fdc_sq_delta)*(np.sqrt(start_fdc)+i*fdc_sq_delta)
+        print(fdc)
+        ctrl.set_fdc(fdc)
+        sleep(20)
+        print("start collecting")
+        flow_rates = [sample_flow_rate() for j in range(5000)]
+        print("stop collecting")
+
+        with open(outfilename, "a") as outfile:
+            outfile.write(str(current_rpm) + ' ' + str(np.mean(flow_rates)) + ' ' + str(np.std(flow_rates)) + '\n')
+
+    print("finished")
 
 
 # A thread that calculates flow rates from the current data
