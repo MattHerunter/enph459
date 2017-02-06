@@ -114,14 +114,14 @@ def flow_meter():
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread)
     rpm_getter.daemon = True
-    data_getter = FuncThread(data_collector)
-    data_getter.daemon = True
+    #data_getter = FuncThread(data_collector)
+    #data_getter.daemon = True
 
     # Start the threads
     controller.start()
     calculator.start()
     plotter.start()
-    data_getter.start()
+    #data_getter.start()
     # Only start RPM thread if using the test bench
     if arduino_connected:
         rpm_getter.start()
@@ -278,7 +278,7 @@ def data_collector():
         fdc = (np.sqrt(start_fdc)+i*fdc_sq_delta)*(np.sqrt(start_fdc)+i*fdc_sq_delta)
         print(fdc)
         ctrl.set_fdc(fdc)
-        sleep(20)
+        sleep(15)
         print("start collecting")
         flow_rates = [sample_flow_rate() for j in range(5000)]
         print("stop collecting")
@@ -362,7 +362,7 @@ def plotter_thread(tc_data, flow_rate, rpm):
     win.nextRow()
     plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
-    plot_flow_rate.setYRange(0, 30, padding=0)
+    plot_flow_rate.setYRange(0, 50, padding=0)
 
     # Plot for scaled velocity (1 over time of flight)
     win.nextRow()

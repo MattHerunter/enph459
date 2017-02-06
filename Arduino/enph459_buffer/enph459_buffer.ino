@@ -11,7 +11,7 @@
 #define FAN_ADJUST_TIME 3
 
 // Constant array to hold the pins reading from the thermocouples
-const int ANALOG_INS[] = {0, 1};
+const int ANALOG_INS[] = {4, 5};
 
 // Number of pins reading from thermocouples
 const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
