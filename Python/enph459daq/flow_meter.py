@@ -114,14 +114,14 @@ def flow_meter():
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread)
     rpm_getter.daemon = True
-    #data_getter = FuncThread(data_collector)
-    #data_getter.daemon = True
+    data_getter = FuncThread(data_collector)
+    data_getter.daemon = True
 
     # Start the threads
     controller.start()
     calculator.start()
     plotter.start()
-    #data_getter.start()
+    data_getter.start()
     # Only start RPM thread if using the test bench
     if arduino_connected:
         rpm_getter.start()
@@ -267,7 +267,7 @@ def data_collector():
     fdc_sq_delta = (np.sqrt(end_fdc)-np.sqrt(start_fdc))/num_fdcs
 
     def sample_flow_rate():
-        sleep(0.003)
+        sleep(0.001)
         a = 0
         while a < 1 or a > 100:
             a = current_flow_rate
