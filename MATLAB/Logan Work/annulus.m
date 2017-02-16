@@ -1,11 +1,11 @@
 %Variable parameters.
 a = 2;
-k = 500;
+k = 1.01;
 b = k*a;
-phi = 2*pi;
+phi = pi;
 
 %Discretization.
-resolution = 500;
+resolution = 100;
 R = linspace(a,b,resolution+1);
 Theta = linspace(0,phi,resolution+1);
 
@@ -14,7 +14,7 @@ alpha = @(k,x) sinh(k*pi/phi*log(a./x));
 beta = @(k,x) sinh(k*pi/phi*log(b./x));
 
 %Compute series to N terms.
-N = 200;
+N = 50;
 s = zeros(resolution+1,resolution+1);
 for n=1:N
     %This condition only necessary to avoid dividing 0/0. Otherwise these
