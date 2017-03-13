@@ -1,6 +1,6 @@
 %Variable parameters.
 a = 2;
-k = 1.01;
+k = 3;
 b = k*a;
 phi = pi;
 

@@ -37,10 +37,10 @@ import random
 # 2 - Exited because the serial port closed unexpectedly
 
 # ---Settings---
-FAN_START_FDC = 1500
+FAN_START_FDC = 2000
 BUFFER_SIZE = 5000
 BUFFER_PADDING = 1000
-FILTER_CUTOFF = 120.0
+FILTER_CUTOFF = 50.0
 FILTER_TYPE = 'LOWPASS'  # LOWPASS or WAVE
 INTERP_FACTOR = 1.0
 WEIGHT_FUNCTION = np.linspace(1, 1, num=BUFFER_SIZE)
@@ -51,9 +51,9 @@ USE_NORMALIZE = True
 USE_SIGN = False
 USE_HVS_CORRELATION = False
 
-PLOT_FILTER = True
+PLOT_FILTER = False
 PLOT_DIFF = False
-PLOT_NORMALIZE = True
+PLOT_NORMALIZE = False
 PLOT_SIGN = False
 
 # ---Globals---
@@ -114,14 +114,14 @@ def flow_meter():
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread)
     rpm_getter.daemon = True
-    data_getter = FuncThread(data_collector)
-    data_getter.daemon = True
+    #data_getter = FuncThread(data_collector)
+    #data_getter.daemon = True
 
     # Start the threads
     controller.start()
     calculator.start()
     plotter.start()
-    data_getter.start()
+    #data_getter.start()
     # Only start RPM thread if using the test bench
     if arduino_connected:
         rpm_getter.start()
@@ -362,13 +362,13 @@ def plotter_thread(tc_data, flow_rate, rpm):
     win.nextRow()
     plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
-    plot_flow_rate.setYRange(0, 50, padding=0)
+    #plot_flow_rate.setYRange(0, 100, padding=0)
 
     # Plot for scaled velocity (1 over time of flight)
     win.nextRow()
     plot_velocity = win.addPlot(title="Scaled Velocity")
     pvel = plot_velocity.plot(pen='y')
-    plot_velocity.setYRange(0, 0.0001, padding=0)
+    #plot_velocity.setYRange(0, 0.00001, padding=0)
 
     # Plot for RPM
     win.nextRow()
@@ -379,8 +379,11 @@ def plotter_thread(tc_data, flow_rate, rpm):
     def update():
         if not win.paused:
             data = tc_data.get()
-            tc1 = tc_filter.filtfilt(data[1])
-            tc2 = tc_filter.filtfilt(data[2])
+            tc1 = data[1]
+            tc2 = data[2]
+            if PLOT_FILTER:
+                tc1 = tc_filter.filtfilt(tc1)
+                tc2 = tc_filter.filtfilt(tc2)
             if PLOT_DIFF:
                 tc1 = np.diff(tc1)
                 tc2 = np.diff(tc2)
@@ -390,12 +393,12 @@ def plotter_thread(tc_data, flow_rate, rpm):
             if PLOT_NORMALIZE:
                 tc1 = normalize(tc1)
                 tc2 = normalize(tc2)
-            if PLOT_DIFF:
-                tc1 = normalize(tc1 * WEIGHT_FUNCTION[0:-1])
-                tc2 = normalize(tc2 * WEIGHT_FUNCTION[0:-1])
-            else:
-                tc1 = normalize(tc1 * WEIGHT_FUNCTION)
-                tc2 = normalize(tc2 * WEIGHT_FUNCTION)
+            #if PLOT_DIFF:
+                #tc1 = normalize(tc1 * WEIGHT_FUNCTION[0:-1])
+                #tc2 = normalize(tc2 * WEIGHT_FUNCTION[0:-1])
+            #else:
+                #tc1 = normalize(tc1 * WEIGHT_FUNCTION)
+                #tc2 = normalize(tc2 * WEIGHT_FUNCTION)
 
             # Update the data for each plot
             ptc1.setData(tc1)
