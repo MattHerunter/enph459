@@ -3,6 +3,7 @@ import arduino
 
 # Imports for signal processing
 from scipy import signal
+from scipy import fftpack
 import numpy as np
 # from scipy import interpolate
 
@@ -39,8 +40,9 @@ import random
 # ---Settings---
 FAN_START_FDC = 2000
 BUFFER_SIZE = 5000
-BUFFER_PADDING = 1000
-FILTER_CUTOFF = 50.0
+BUFFER_PADDING = 15
+FILTER_CUTOFF = 10.0
+FILTER_ORD = 4
 FILTER_TYPE = 'LOWPASS'  # LOWPASS or WAVE
 INTERP_FACTOR = 1.0
 WEIGHT_FUNCTION = np.linspace(1, 1, num=BUFFER_SIZE)
@@ -64,11 +66,13 @@ current_flow_rate = 0
 class GlobalFilter:
     def __init__(self, dt, cutoff):
         fs = 1.0E6/dt
-        self.filter_b, self.filter_a = signal.bessel(8, [cutoff / (fs / 2.0)], btype='low', analog=False)
+        self.filter_b, self.filter_a = signal.bessel(FILTER_ORD, [cutoff / (fs / 2.0)], btype='low', analog=False)
+        #self.filter_b, self.filter_a = signal.bessel(3, [0.2 / (fs / 2.0), 10.0 / (fs / 2.0)], btype='band', analog=False)
 
     def update(self, dt, cutoff):
         fs = 1.0E6/dt
-        self.filter_b, self.filter_a = signal.bessel(8, [cutoff / (fs / 2.0)], btype='low', analog=False)
+        self.filter_b, self.filter_a = signal.bessel(FILTER_ORD, [cutoff / (fs / 2.0)], btype='low', analog=False)
+        #self.filter_b, self.filter_a = signal.bessel(3, [0.2 / (fs / 2.0), 10.0 / (fs / 2.0)], btype='band', analog=False)
 
     def filtfilt(self, data):
         if FILTER_TYPE == 'LOWPASS':
@@ -170,6 +174,7 @@ def fake_data_thread(tc_data, flow_rate, rpm):
 
 # A thread that controls the fan and manages Arduino communications, including data acquisition
 def controller_thread(tc_data, flow_rate, rpm):
+
     global tc_filter
 
     # Set the fan speed adjust to On and start the fan
@@ -248,6 +253,7 @@ def controller_thread(tc_data, flow_rate, rpm):
                 tc_data.push(push_data)
                 flow_rate.push(current_flow_rate * np.ones(1, dtype='f'))
                 rpm.push(current_rpm * np.ones(1, dtype='f'))
+
             except (ValueError, IndexError):
                 print('Invalid thermocouple data! Data buffers not modified.')
 
@@ -352,25 +358,29 @@ def plotter_thread(tc_data, flow_rate, rpm):
     ptc1 = plot_signals.plot(pen='y')
     ptc2 = plot_signals.plot(pen='g')
 
+    # win.nextRow()
+    # plot_fft = win.addPlot(title="FFT")
+    # pfft = plot_fft.plot(x=4,pen='y')
+
     # Plot for heater voltage signal
     win.nextRow()
     plot_hvs = win.addPlot(title="Heater Voltage Signal")
     phvs = plot_hvs.plot(pen='y')
     plot_hvs.setYRange(-2, 2, padding=0)
 
-    # Plot for time of flight delay
+    #Plot for time of flight delay
     win.nextRow()
     plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
-    #plot_flow_rate.setYRange(0, 100, padding=0)
+    #plot_flow_rate.setYRange(-300,0, padding=0)
 
-    # Plot for scaled velocity (1 over time of flight)
+    #Plot for scaled velocity (1 over time of flight)
     win.nextRow()
     plot_velocity = win.addPlot(title="Scaled Velocity")
     pvel = plot_velocity.plot(pen='y')
-    #plot_velocity.setYRange(0, 0.00001, padding=0)
+    plot_velocity.setYRange(0, 0.00001, padding=0)
 
-    # Plot for RPM
+    #Plot for RPM
     win.nextRow()
     plot_rpm = win.addPlot(title="RPM")
     prpm = plot_rpm.plot(pen='y')
@@ -403,6 +413,7 @@ def plotter_thread(tc_data, flow_rate, rpm):
             # Update the data for each plot
             ptc1.setData(tc1)
             ptc2.setData(tc2)
+            #pfft.setData(fftpack.rfft(normalize(tc1)))
             pfr.setData(flow_rate.get())
             pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
             prpm.setData(rpm.get())

@@ -39,13 +39,15 @@ void loop() {
   float starting_freq_khz = 2.0f / 1000;
   unsigned long chirp_length_millis = 5000;
   float freq_khz_slope = (0.1f - starting_freq_khz) / (50000);
-  chirpSignal(starting_freq_khz, freq_khz_slope, chirp_length_millis);
-  //  int high_pulse = 150+random(100);
-  //  int low_pulse = 150+random(100);
-  //  turnHeaterOn();
-  //  streamData(high_pulse);
-  //  turnHeaterOff();
-  //  streamData(low_pulse);
+  
+  //chirpSignal(starting_freq_khz, freq_khz_slope, chirp_length_millis);
+  
+    int high_pulse = 100+random(50);
+    int low_pulse = 100+random(50);
+    turnHeaterOn();
+    streamData(high_pulse);
+    turnHeaterOff();
+    streamData(low_pulse);
 }
 
 // Writes data read from the analog ports to the serial ports in format HEATER_STATUS, TC1, TC2...\n
