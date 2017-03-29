@@ -435,6 +435,43 @@ def plotter_thread(tc_data, flow_rate, rpm):
     timer.start(50)
     app.exec_()
 
+# A thread that continuously plots the data
+def feedback_thread(tc_data):
+
+    tc_threshold = 900
+    cmp_threshold = 50
+    kp = 0.1
+    ki = 0
+    err_integral = 0
+    err_integral_max = 255
+    dt = 0.001
+
+    amplifier_target = 0.3
+
+    while True:
+        data = tc_data.get()
+        tc1 = data[1]
+        tc2 = data[2]
+        cmp1 = data[3]
+        cmp2 = data[4]
+
+        # Thermocouples
+        tc1_err = amplifier_target - np.mean(np.greater((tc1 - tc_threshold), 0 * (tc1 - tc_threshold)))
+        tc2_err = amplifier_target - np.mean(np.greater((tc2 - tc_threshold), 0 * (tc2 - tc_threshold)))
+        tc_err = min(tc1_err, tc2_err)
+
+        # Comparators
+        cmp1_err = amplifier_target - np.mean(np.greater((cmp1 - cmp_threshold), 0 * (cmp1 - cmp_threshold)))
+        cmp2_err = amplifier_target - np.mean(np.greater((cmp2 - cmp_threshold), 0 * (cmp2 - cmp_threshold)))
+        cmp_err = min(cmp1_err, cmp2_err)
+
+        err = min(tc_err, cmp_err)
+        err_integral += err*dt
+
+        err_integral = min(err_integral, err_integral_max)
+        err_integral = max(err_integral, -err_integral_max)
+
+        cv = kp*err + ki*error_integral
 
 # A thread that calculates flow rates from the current data and records fan RPM
 def rpm_thread():
