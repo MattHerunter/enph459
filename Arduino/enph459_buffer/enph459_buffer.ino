@@ -12,6 +12,7 @@
 
 // Constant array to hold the pins reading from the thermocouples
 const int ANALOG_INS[] = {4, 5};
+const int COMP_INS[] = {0, 1};
 
 // Number of pins reading from thermocouples
 const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
@@ -42,30 +43,42 @@ void loop() {
   
   //chirpSignal(starting_freq_khz, freq_khz_slope, chirp_length_millis);
   
-    int high_pulse = 100+random(50);
-    int low_pulse = 100+random(50);
+    int high_pulse = 150+random(50);
+    int low_pulse = 150+random(50);
     turnHeaterOn();
     streamData(high_pulse);
     turnHeaterOff();
     streamData(low_pulse);
 }
 
-// Writes data read from the analog ports to the serial ports in format HEATER_STATUS, TC1, TC2...\n
+// Writes data read from the analog ports to the serial ports in format HEATER_STATUS, TC1, TC2, ..., COMP1, COMP2, ...\n
 void streamData(unsigned long time_millis) {
   int num_samples = time_millis * 1000 / SAMPLE_TIME_MICROS;
   for (int ii = 0; ii < num_samples; ii++) {
     delayMicroseconds(SAMPLE_TIME_MICROS);
     Serial.print(HEATER_STATUS);
     Serial.print(",");
-    for (int jj = 0; jj < NUM_ANALOG_INS - 1; jj++) {
+    for (int jj = 0; jj < NUM_ANALOG_INS; jj++) {
       Serial.print(analogRead(ANALOG_INS[jj]));
       Serial.print(",");
     }
-    Serial.print(analogRead(ANALOG_INS[NUM_ANALOG_INS - 1]));
+    for (int jj = 0; jj < NUM_ANALOG_INS; jj++) {
+      Serial.print(analogRead(COMP_INS[jj]));
+      Serial.print(",");
+    }
+    Serial.print(analogRead(COMP_INS[NUM_ANALOG_INS - 1]));
     Serial.print("\n");
   }
 }
 
+// Changes heater duty cycle if a command is sent from python.
+void updateHeater() {
+  int heaterStrength = Serial.read();
+
+  if(heaterStrength > -1) {
+    analogWrite(MOSFET_GATE_PIN, heaterStrength);
+  }
+}
 
 // Code for up chirp signal
 void chirpSignal(float starting_freq_khz, float freq_khz_slope, unsigned long chirp_length_millis) {
