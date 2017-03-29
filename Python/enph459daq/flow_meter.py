@@ -93,7 +93,7 @@ tc_filter = GlobalFilter(1000.0, FILTER_CUTOFF)
 def flow_meter():
     # Initialize thermocouple/heater voltage/comparator buffers to zero
     tc_data = DataList(BUFFER_SIZE, 5)
-    tc_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(3)]
+    tc_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(5)]
     tc_data.push(tc_init)
 
     # Initialize flow rate buffer to zero
@@ -393,7 +393,7 @@ def plotter_thread(tc_data, flow_rate, rpm):
     plot_cmp = win.addPlot(title="Comparators")
     pcmp1 = plot_cmp.plot(pen='y')
     pcmp2 = plot_cmp.plot(pen='g')
-    plot_cmp.setYRange(0, 1024, padding=0)
+    plot_cmp.setYRange(-20, 200, padding=0)
 
     def update():
         if not win.paused:
@@ -425,10 +425,10 @@ def plotter_thread(tc_data, flow_rate, rpm):
             #pfft.setData(fftpack.rfft(normalize(tc1)))
             pfr.setData(flow_rate.get())
             pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
-            prpm.setData(rpm.get())
+            #prpm.setData(rpm.get())
             phvs.setData(normalize(data[0]*WEIGHT_FUNCTION))
             pcmp1.setData(data[3])
-            pcmp2.setData(data[4])
+            pcmp2.setData(data[4]+20)
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
