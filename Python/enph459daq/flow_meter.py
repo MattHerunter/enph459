@@ -118,14 +118,14 @@ def flow_meter():
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread)
     rpm_getter.daemon = True
-    #data_getter = FuncThread(data_collector)
-    #data_getter.daemon = True
+    data_getter = FuncThread(data_collector)
+    data_getter.daemon = True
 
     # Start the threads
     controller.start()
     calculator.start()
     plotter.start()
-    #data_getter.start()
+    data_getter.start()
     # Only start RPM thread if using the test bench
     if arduino_connected:
         rpm_getter.start()
@@ -441,7 +441,10 @@ def rpm_thread():
     global current_rpm
     while True:
         # Update rpm buffer
-        current_rpm = ctrl.get_rpm()
+        try:
+            current_rpm = ctrl.get_rpm()
+        except:
+            print("Questionable RPM man.")
 
 
 # A 1D buffer using numpy arrays
