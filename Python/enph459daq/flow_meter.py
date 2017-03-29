@@ -91,8 +91,8 @@ tc_filter = GlobalFilter(1000.0, FILTER_CUTOFF)
 
 # Main flow calculation method
 def flow_meter():
-    # Initialize thermocouple/heater voltage buffers to zero
-    tc_data = DataList(BUFFER_SIZE, 3)
+    # Initialize thermocouple/heater voltage/comparator buffers to zero
+    tc_data = DataList(BUFFER_SIZE, 5)
     tc_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(3)]
     tc_data.push(tc_init)
 
@@ -249,7 +249,9 @@ def controller_thread(tc_data, flow_rate, rpm):
             # Update thermocouple data buffers
             try:
                 push_data = [int(line.split(',')[0]) * np.ones(1, dtype='f'), int(line.split(',')[1]) *
-                             np.ones(1, dtype='f'), int(line.split(',')[2]) * np.ones(1, dtype='f')]
+                             np.ones(1, dtype='f'), int(line.split(',')[2]) * np.ones(1, dtype='f'),
+                             int(line.split(',')[3]) * np.ones(1, dtype='f'), int(line.split(',')[4]) *
+                             np.ones(1, dtype='f')]
                 tc_data.push(push_data)
                 flow_rate.push(current_flow_rate * np.ones(1, dtype='f'))
                 rpm.push(current_rpm * np.ones(1, dtype='f'))
@@ -368,23 +370,30 @@ def plotter_thread(tc_data, flow_rate, rpm):
     phvs = plot_hvs.plot(pen='y')
     plot_hvs.setYRange(-2, 2, padding=0)
 
-    #Plot for time of flight delay
+    # Plot for time of flight delay
     win.nextRow()
     plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
-    #plot_flow_rate.setYRange(-300,0, padding=0)
+    # plot_flow_rate.setYRange(-300,0, padding=0)
 
-    #Plot for scaled velocity (1 over time of flight)
+    # Plot for scaled velocity (1 over time of flight)
     win.nextRow()
     plot_velocity = win.addPlot(title="Scaled Velocity")
     pvel = plot_velocity.plot(pen='y')
     plot_velocity.setYRange(0, 0.00001, padding=0)
 
-    #Plot for RPM
+    # Plot for RPM
+    # win.nextRow()
+    # plot_rpm = win.addPlot(title="RPM")
+    # prpm = plot_rpm.plot(pen='y')
+    # plot_rpm.setYRange(0, 2500, padding=0)
+
+    # Plot for comparators
     win.nextRow()
-    plot_rpm = win.addPlot(title="RPM")
-    prpm = plot_rpm.plot(pen='y')
-    plot_rpm.setYRange(0, 2500, padding=0)
+    plot_cmp = win.addPlot(title="Comparators")
+    pcmp1 = plot_cmp.plot(pen='y')
+    pcmp2 = plot_cmp.plot(pen='g')
+    plot_cmp.setYRange(0, 1024, padding=0)
 
     def update():
         if not win.paused:
@@ -418,6 +427,8 @@ def plotter_thread(tc_data, flow_rate, rpm):
             pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
             prpm.setData(rpm.get())
             phvs.setData(normalize(data[0]*WEIGHT_FUNCTION))
+            pcmp1.setData(data[3])
+            pcmp2.setData(data[4])
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
