@@ -5,7 +5,7 @@ import json
 import ast
 
 # ---IP Address of the Controller---
-controllerAddress = '192.168.137.140'
+controllerAddress = '192.168.137.18'
 
 
 # Method to set the fan duty cycle on the controller

@@ -29,6 +29,9 @@ class ArduinoPort:
     def read_line(self):
         return self.arduino_serial.readline().rstrip()
 
+    def write_line(self, hdc):
+        self.arduino_serial.write(chr(hdc))
+
     # Checks if the serial port is still open
     def is_open(self):
         return self.arduino_serial.isOpen()

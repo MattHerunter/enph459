@@ -59,8 +59,16 @@ PLOT_NORMALIZE = False
 PLOT_SIGN = False
 
 # ---Globals---
-current_rpm = 0
+current_rpm = 1
 current_flow_rate = 0
+
+current_tc1_err = 0
+current_tc2_err = 0
+current_cmp1_err = 0
+current_cmp2_err = 0
+current_err = 0
+current_err_integral = 0
+current_cv = 0
 
 # Filter that can be updated from one thread and used in another
 class GlobalFilter:
@@ -104,20 +112,27 @@ def flow_meter():
     rpm = DataBuffer(BUFFER_SIZE)
     rpm.push(np.zeros(BUFFER_SIZE, dtype='f'))
 
+    # Buffers for PID data
+    pid_data = DataList(BUFFER_SIZE, 7)
+    pid_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(7)]
+    pid_data.push(pid_init)
+
     # Read data from the test bench if an Arduino is detected, use fake data otherwise
     arduino_connected = arduino.find_arduino_port() is not None
     if arduino_connected:
-        controller = FuncThread(controller_thread, tc_data, flow_rate, rpm)
+        controller = FuncThread(controller_thread, tc_data, flow_rate, rpm, pid_data)
     else:
-        controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm)
+        controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm, pid_data)
 
     # Initialize other threads
     calculator = FuncThread(calculator_thread, tc_data)
     calculator.daemon = True
-    plotter = FuncThread(plotter_thread, tc_data, flow_rate, rpm)
+    plotter = FuncThread(plotter_thread, tc_data, flow_rate, rpm, pid_data)
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread)
     rpm_getter.daemon = True
+    feedback = FuncThread(feedback_thread, tc_data)
+    feedback.daemon = True
     data_getter = FuncThread(data_collector)
     data_getter.daemon = True
 
@@ -125,6 +140,7 @@ def flow_meter():
     controller.start()
     calculator.start()
     plotter.start()
+    feedback.start()
     data_getter.start()
     # Only start RPM thread if using the test bench
     if arduino_connected:
@@ -173,7 +189,7 @@ def fake_data_thread(tc_data, flow_rate, rpm):
 
 
 # A thread that controls the fan and manages Arduino communications, including data acquisition
-def controller_thread(tc_data, flow_rate, rpm):
+def controller_thread(tc_data, flow_rate, rpm, pid_data):
 
     global tc_filter
 
@@ -255,6 +271,14 @@ def controller_thread(tc_data, flow_rate, rpm):
                 tc_data.push(push_data)
                 flow_rate.push(current_flow_rate * np.ones(1, dtype='f'))
                 rpm.push(current_rpm * np.ones(1, dtype='f'))
+                pid_push_data = [current_tc1_err * np.ones(1, dtype='f'), current_tc2_err *
+                             np.ones(1, dtype='f'), current_cmp1_err * np.ones(1, dtype='f'),
+                             current_cmp2_err * np.ones(1, dtype='f'), current_err *
+                             np.ones(1, dtype='f'), current_err_integral * np.ones(1, dtype='f'),
+                             current_cv * np.ones(1, dtype='f')]
+                pid_data.push(pid_push_data)
+
+                arduino_port.write_line(int(current_cv))
 
             except (ValueError, IndexError):
                 print('Invalid thermocouple data! Data buffers not modified.')
@@ -269,8 +293,8 @@ def data_collector():
 
     outfilename = "flow_rates_" + datetime.now().strftime('%H-%M-%S')
 
-    start_fdc = 1200
-    end_fdc = 2000
+    start_fdc = 1400
+    end_fdc = 2200
     num_fdcs = 80
     fdc_sq_delta = (np.sqrt(end_fdc)-np.sqrt(start_fdc))/num_fdcs
 
@@ -334,7 +358,7 @@ def calculator_thread(tc_data):
 
 
 # A thread that continuously plots the data
-def plotter_thread(tc_data, flow_rate, rpm):
+def plotter_thread(tc_data, flow_rate, rpm, pid_data):
 
     class PlotWindow(pyqtgraph.GraphicsWindow):
         def __init__(self):
@@ -360,27 +384,42 @@ def plotter_thread(tc_data, flow_rate, rpm):
     ptc1 = plot_signals.plot(pen='y')
     ptc2 = plot_signals.plot(pen='g')
 
-    # win.nextRow()
+    # Plot for comparators
+    plot_cmp = win.addPlot(title="Comparators")
+    pcmp1 = plot_cmp.plot(pen='y')
+    pcmp2 = plot_cmp.plot(pen='g')
+    plot_cmp.setYRange(-20, 200, padding=0)
+
     # plot_fft = win.addPlot(title="FFT")
     # pfft = plot_fft.plot(x=4,pen='y')
 
-    # Plot for heater voltage signal
     win.nextRow()
+
+    # Plot for heater voltage signal
     plot_hvs = win.addPlot(title="Heater Voltage Signal")
     phvs = plot_hvs.plot(pen='y')
     plot_hvs.setYRange(-2, 2, padding=0)
 
-    # Plot for time of flight delay
+    # Plot for PID things
+    plot_pid = win.addPlot(title="PID Errors")
+    ptc1err = plot_pid.plot(pen='g')
+    ptc2err = plot_pid.plot(pen='g')
+    pcmp1err = plot_pid.plot(pen='y')
+    pcmp2err = plot_pid.plot(pen='y')
+    perr = plot_pid.plot(pen='r')
+
     win.nextRow()
+
+    # Plot for time of flight delay
     plot_flow_rate = win.addPlot(title="Time of Flight")
     pfr = plot_flow_rate.plot(pen='y')
     # plot_flow_rate.setYRange(-300,0, padding=0)
 
     # Plot for scaled velocity (1 over time of flight)
-    win.nextRow()
-    plot_velocity = win.addPlot(title="Scaled Velocity")
-    pvel = plot_velocity.plot(pen='y')
-    plot_velocity.setYRange(0, 0.00001, padding=0)
+    # win.nextRow()
+    # plot_velocity = win.addPlot(title="Scaled Velocity")
+    # pvel = plot_velocity.plot(pen='y')
+    # plot_velocity.setYRange(0, 0.00001, padding=0)
 
     # Plot for RPM
     # win.nextRow()
@@ -388,16 +427,17 @@ def plotter_thread(tc_data, flow_rate, rpm):
     # prpm = plot_rpm.plot(pen='y')
     # plot_rpm.setYRange(0, 2500, padding=0)
 
-    # Plot for comparators
-    win.nextRow()
-    plot_cmp = win.addPlot(title="Comparators")
-    pcmp1 = plot_cmp.plot(pen='y')
-    pcmp2 = plot_cmp.plot(pen='g')
-    plot_cmp.setYRange(-20, 200, padding=0)
+    # Plot for PID things
+    plot_pid = win.addPlot(title="PID Things")
+    perrintegral = plot_pid.plot(pen='y')
+    pcv = plot_pid.plot(pen='r')
+
 
     def update():
         if not win.paused:
             data = tc_data.get()
+            pid_vars = pid_data.get()
+
             tc1 = data[1]
             tc2 = data[2]
             if PLOT_FILTER:
@@ -424,11 +464,19 @@ def plotter_thread(tc_data, flow_rate, rpm):
             ptc2.setData(tc2)
             #pfft.setData(fftpack.rfft(normalize(tc1)))
             pfr.setData(flow_rate.get())
-            pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
+            #pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
             #prpm.setData(rpm.get())
             phvs.setData(normalize(data[0]*WEIGHT_FUNCTION))
             pcmp1.setData(data[3])
             pcmp2.setData(data[4]+20)
+
+            ptc1err.setData(pid_vars[0])
+            ptc2err.setData(pid_vars[1])
+            pcmp1err.setData(pid_vars[2])
+            pcmp2err.setData(pid_vars[3])
+            perr.setData(pid_vars[4])
+            perrintegral.setData(pid_vars[5])
+            pcv.setData(pid_vars[6])
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
@@ -437,41 +485,74 @@ def plotter_thread(tc_data, flow_rate, rpm):
 
 # A thread that continuously plots the data
 def feedback_thread(tc_data):
+    global current_tc1_err
+    global current_tc2_err
+    global current_cmp1_err
+    global current_cmp2_err
+    global current_err
+    global current_err_integral
+    global current_cv
 
-    tc_threshold = 900
+    tc_threshold = 750
     cmp_threshold = 50
-    kp = 0.1
-    ki = 0
+    kp = 10
+    ki = 10
+    kd = 0
     err_integral = 0
-    err_integral_max = 255
-    dt = 0.001
+    err_derivative = 0
+    err = 0
+    last_err = 0
+    cv_max = 255
+    cv_min = 0
+    dt = 0.01
 
-    amplifier_target = 0.3
+    amplifier_target = 0.1
 
     while True:
+        sleep(dt)
+
         data = tc_data.get()
-        tc1 = data[1]
-        tc2 = data[2]
-        cmp1 = data[3]
-        cmp2 = data[4]
+        tc1 = data[1][4000:-1]
+        tc2 = data[2][4000:-1]
+        cmp1 = data[3][4000:-1]
+        cmp2 = data[4][4000:-1]
 
         # Thermocouples
-        tc1_err = amplifier_target - np.mean(np.greater((tc1 - tc_threshold), 0 * (tc1 - tc_threshold)))
-        tc2_err = amplifier_target - np.mean(np.greater((tc2 - tc_threshold), 0 * (tc2 - tc_threshold)))
+        #tc1_err = (amplifier_target - np.mean(np.greater((tc1 - tc_threshold), 0 * (tc1 - tc_threshold))))/amplifier_target
+        #tc2_err = (amplifier_target - np.mean(np.greater((tc2 - tc_threshold), 0 * (tc2 - tc_threshold))))/amplifier_target
+        tc1_err = (tc_threshold - np.max(tc1)) / tc_threshold
+        tc2_err = (tc_threshold - np.max(tc2)) / tc_threshold
         tc_err = min(tc1_err, tc2_err)
 
         # Comparators
-        cmp1_err = amplifier_target - np.mean(np.greater((cmp1 - cmp_threshold), 0 * (cmp1 - cmp_threshold)))
-        cmp2_err = amplifier_target - np.mean(np.greater((cmp2 - cmp_threshold), 0 * (cmp2 - cmp_threshold)))
+        cmp1_err = (amplifier_target - np.mean(np.greater((cmp1 - cmp_threshold), 0 * (cmp1 - cmp_threshold))))/amplifier_target
+        cmp2_err = (amplifier_target - np.mean(np.greater((cmp2 - cmp_threshold), 0 * (cmp2 - cmp_threshold))))/amplifier_target
         cmp_err = min(cmp1_err, cmp2_err)
 
+        last_err = err
         err = min(tc_err, cmp_err)
         err_integral += err*dt
+        err_derivative = (err - last_err)/dt
 
-        err_integral = min(err_integral, err_integral_max)
-        err_integral = max(err_integral, -err_integral_max)
+        if ki > 0:
+            err_integral = min(err_integral, cv_max/ki)
+            err_integral = max(err_integral, -cv_max/ki)
+        else:
+            err_integral = 0
 
-        cv = kp*err + ki*error_integral
+        cv = kp*err + ki*err_integral + kd*err_derivative
+        cv = min(cv, cv_max)
+        cv = max(cv, cv_min)
+
+        current_tc1_err = tc1_err
+        current_tc2_err = tc2_err
+        current_cmp1_err = cmp1_err
+        current_cmp2_err = cmp2_err
+        current_err = err
+        current_err_integral = err_integral
+        current_cv = cv
+
+
 
 # A thread that calculates flow rates from the current data and records fan RPM
 def rpm_thread():

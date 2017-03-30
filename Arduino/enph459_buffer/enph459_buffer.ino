@@ -5,7 +5,7 @@
 #define SAMPLE_TIME_MICROS 1000
 
 // Pin that controls the heating element MOSFET
-#define MOSFET_GATE_PIN 2
+#define MOSFET_GATE_PIN 3
 
 // Number of seconds to wait after updating the fan duty cycle
 #define FAN_ADJUST_TIME 3
@@ -18,6 +18,7 @@ const int COMP_INS[] = {0, 1};
 const int NUM_ANALOG_INS = sizeof(ANALOG_INS) / sizeof(ANALOG_INS[0]);
 
 // Global holding the status of the heater
+int HEATER_DUTY_CYCLE = 0;
 int HEATER_STATUS = 0;
 
 // ---List of Python Commands---
@@ -55,6 +56,8 @@ void loop() {
 void streamData(unsigned long time_millis) {
   int num_samples = time_millis * 1000 / SAMPLE_TIME_MICROS;
   for (int ii = 0; ii < num_samples; ii++) {
+    updateHeater();
+    
     delayMicroseconds(SAMPLE_TIME_MICROS);
     Serial.print(HEATER_STATUS);
     Serial.print(",");
@@ -68,6 +71,7 @@ void streamData(unsigned long time_millis) {
     }
     Serial.print(analogRead(COMP_INS[NUM_ANALOG_INS - 1]));
     Serial.print("\n");
+    Serial.flush();
   }
 }
 
@@ -76,8 +80,9 @@ void updateHeater() {
   int heaterStrength = Serial.read();
 
   if(heaterStrength > -1) {
-    analogWrite(MOSFET_GATE_PIN, heaterStrength);
+    HEATER_DUTY_CYCLE = heaterStrength;
   }
+  analogWrite(MOSFET_GATE_PIN, HEATER_DUTY_CYCLE * 0.5*(HEATER_STATUS + 1));
 }
 
 // Code for up chirp signal
@@ -104,13 +109,11 @@ void chirpSignal(float starting_freq_khz, float freq_khz_slope, unsigned long ch
 
 // Turns the heater on and sets the value of HEATER_STATUS to 1
 void turnHeaterOn() {
-  digitalWrite(MOSFET_GATE_PIN, HIGH);
   HEATER_STATUS = 1;
 }
 
 // Turns the heater off and sets the value of HEATER_STATUS to -1
 void turnHeaterOff() {
-  digitalWrite(MOSFET_GATE_PIN, LOW);
   HEATER_STATUS = -1;
 }
 //---------------Python Commands Beneath Here---------------
