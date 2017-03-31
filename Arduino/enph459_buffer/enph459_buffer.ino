@@ -43,13 +43,15 @@ void loop() {
   float freq_khz_slope = (0.1f - starting_freq_khz) / (50000);
   
   //chirpSignal(starting_freq_khz, freq_khz_slope, chirp_length_millis);
-  
-    int high_pulse = 150+random(50);
-    int low_pulse = 150+random(50);
-    turnHeaterOn();
-    streamData(high_pulse);
-    turnHeaterOff();
-    streamData(low_pulse);
+    
+//    int high_pulse = 150+random(50);
+//    int low_pulse = 150+random(50);
+//    turnHeaterOn();
+//    streamData(high_pulse);
+//    turnHeaterOff();
+//    streamData(low_pulse);
+
+  streamDataSin();
 }
 
 // Writes data read from the analog ports to the serial ports in format HEATER_STATUS, TC1, TC2, ..., COMP1, COMP2, ...\n
@@ -72,6 +74,31 @@ void streamData(unsigned long time_millis) {
     Serial.print(analogRead(COMP_INS[NUM_ANALOG_INS - 1]));
     Serial.print("\n");
     Serial.flush();
+  }
+}
+
+// Writes data read from the analog ports to the serial ports in format HEATER_STATUS, TC1, TC2, ..., COMP1, COMP2, ...\n
+void streamDataSin() {
+  int t = 0;
+  while(true){
+    int heaterStrength = Serial.read();
+    HEATER_DUTY_CYCLE = (70*(10.0*sin(2.0*PI/800*t)/10.0 + 10.0*sin(8.0*PI/800*t))/10.0 + 127)*heaterStrength/255.0;
+    analogWrite(MOSFET_GATE_PIN, HEATER_DUTY_CYCLE);
+    delayMicroseconds(SAMPLE_TIME_MICROS);
+    Serial.print(HEATER_DUTY_CYCLE);
+    Serial.print(",");
+    for (int jj = 0; jj < NUM_ANALOG_INS; jj++) {
+      Serial.print(analogRead(ANALOG_INS[jj]));
+      Serial.print(",");
+    }
+    for (int jj = 0; jj < NUM_ANALOG_INS; jj++) {
+      Serial.print(analogRead(COMP_INS[jj]));
+      Serial.print(",");
+    }
+    Serial.print(analogRead(COMP_INS[NUM_ANALOG_INS - 1]));
+    Serial.print("\n");
+    Serial.flush();
+    t++;
   }
 }
 

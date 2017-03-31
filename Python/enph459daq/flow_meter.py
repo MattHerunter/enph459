@@ -70,6 +70,9 @@ current_err = 0
 current_err_integral = 0
 current_cv = 0
 
+current_freq_ratio1 = 0
+current_freq_ratio2 = 0
+
 # Filter that can be updated from one thread and used in another
 class GlobalFilter:
     def __init__(self, dt, cutoff):
@@ -117,17 +120,22 @@ def flow_meter():
     pid_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(7)]
     pid_data.push(pid_init)
 
+    # Buffers for FFT data
+    fft_data = DataList(BUFFER_SIZE, 2)
+    fft_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(2)]
+    fft_data.push(fft_init)
+
     # Read data from the test bench if an Arduino is detected, use fake data otherwise
     arduino_connected = arduino.find_arduino_port() is not None
     if arduino_connected:
-        controller = FuncThread(controller_thread, tc_data, flow_rate, rpm, pid_data)
+        controller = FuncThread(controller_thread, tc_data, flow_rate, rpm, pid_data, fft_data)
     else:
-        controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm, pid_data)
+        controller = FuncThread(fake_data_thread, tc_data, flow_rate, rpm, pid_data, fft_data)
 
     # Initialize other threads
     calculator = FuncThread(calculator_thread, tc_data)
     calculator.daemon = True
-    plotter = FuncThread(plotter_thread, tc_data, flow_rate, rpm, pid_data)
+    plotter = FuncThread(plotter_thread, tc_data, flow_rate, rpm, pid_data, fft_data)
     plotter.daemon = True
     rpm_getter = FuncThread(rpm_thread)
     rpm_getter.daemon = True
@@ -141,10 +149,10 @@ def flow_meter():
     calculator.start()
     plotter.start()
     feedback.start()
-    data_getter.start()
+    # data_getter.start()
     # Only start RPM thread if using the test bench
-    if arduino_connected:
-        rpm_getter.start()
+    # if arduino_connected:
+        # rpm_getter.start()
 
 
 # Implements threads that can take parameters
@@ -189,7 +197,7 @@ def fake_data_thread(tc_data, flow_rate, rpm):
 
 
 # A thread that controls the fan and manages Arduino communications, including data acquisition
-def controller_thread(tc_data, flow_rate, rpm, pid_data):
+def controller_thread(tc_data, flow_rate, rpm, pid_data, fft_data):
 
     global tc_filter
 
@@ -277,6 +285,9 @@ def controller_thread(tc_data, flow_rate, rpm, pid_data):
                              np.ones(1, dtype='f'), current_err_integral * np.ones(1, dtype='f'),
                              current_cv * np.ones(1, dtype='f')]
                 pid_data.push(pid_push_data)
+                fft_push_data = [current_freq_ratio1 * np.ones(1, dtype='f'), current_freq_ratio2 *
+                             np.ones(1, dtype='f')]
+                fft_data.push(fft_push_data)
 
                 arduino_port.write_line(int(current_cv))
 
@@ -358,7 +369,7 @@ def calculator_thread(tc_data):
 
 
 # A thread that continuously plots the data
-def plotter_thread(tc_data, flow_rate, rpm, pid_data):
+def plotter_thread(tc_data, flow_rate, rpm, pid_data, fft_data):
 
     class PlotWindow(pyqtgraph.GraphicsWindow):
         def __init__(self):
@@ -390,8 +401,9 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data):
     pcmp2 = plot_cmp.plot(pen='g')
     plot_cmp.setYRange(-20, 200, padding=0)
 
-    # plot_fft = win.addPlot(title="FFT")
-    # pfft = plot_fft.plot(x=4,pen='y')
+    # Plot for FFT1
+    plot_fft1 = win.addPlot(title="FFT")
+    pfft1 = plot_fft1.plot(x=4,pen='y')
 
     win.nextRow()
 
@@ -407,6 +419,10 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data):
     pcmp1err = plot_pid.plot(pen='y')
     pcmp2err = plot_pid.plot(pen='y')
     perr = plot_pid.plot(pen='r')
+
+    # Plot for FFT2
+    plot_fft2 = win.addPlot(title="FFT")
+    pfft2 = plot_fft2.plot(x=4, pen='g')
 
     win.nextRow()
 
@@ -432,8 +448,14 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data):
     perrintegral = plot_pid.plot(pen='y')
     pcv = plot_pid.plot(pen='r')
 
+    # Plot for frequency ratios
+    plot_freq = win.addPlot(title="Frequency Ratios")
+    pfreq1 = plot_freq.plot(pen='y')
+    pfreq2 = plot_freq.plot(pen='g')
 
     def update():
+        global current_freq_ratio1
+        global current_freq_ratio2
         if not win.paused:
             data = tc_data.get()
             pid_vars = pid_data.get()
@@ -462,7 +484,17 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data):
             # Update the data for each plot
             ptc1.setData(tc1)
             ptc2.setData(tc2)
-            #pfft.setData(fftpack.rfft(normalize(tc1)))
+
+            fft1 = np.abs(fftpack.rfft(normalize(tc1)))[0:100]
+            fft2 = np.abs(fftpack.rfft(normalize(tc2)))[0:100]
+            pfft1.setData(fft1)
+            pfft2.setData(fft2)
+            current_freq_ratio1 = np.max(fft1[0:30]) / np.max(fft1[30:-1])
+            current_freq_ratio2 = np.max(fft2[0:30]) / np.max(fft2[30:-1])
+            freq_data = fft_data.get()
+            pfreq1.setData(freq_data[0])
+            pfreq2.setData(freq_data[1])
+
             pfr.setData(flow_rate.get())
             #pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
             #prpm.setData(rpm.get())
