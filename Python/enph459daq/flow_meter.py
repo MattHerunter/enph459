@@ -72,6 +72,7 @@ current_cv = 0
 
 current_freq_ratio1 = 0
 current_freq_ratio2 = 0
+current_relative_diffusion = 0
 
 # Filter that can be updated from one thread and used in another
 class GlobalFilter:
@@ -121,8 +122,8 @@ def flow_meter():
     pid_data.push(pid_init)
 
     # Buffers for FFT data
-    fft_data = DataList(BUFFER_SIZE, 2)
-    fft_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(2)]
+    fft_data = DataList(BUFFER_SIZE, 3)
+    fft_init = [np.zeros(BUFFER_SIZE, dtype='f') for i in range(3)]
     fft_data.push(fft_init)
 
     # Read data from the test bench if an Arduino is detected, use fake data otherwise
@@ -286,7 +287,7 @@ def controller_thread(tc_data, flow_rate, rpm, pid_data, fft_data):
                              current_cv * np.ones(1, dtype='f')]
                 pid_data.push(pid_push_data)
                 fft_push_data = [current_freq_ratio1 * np.ones(1, dtype='f'), current_freq_ratio2 *
-                             np.ones(1, dtype='f')]
+                             np.ones(1, dtype='f'), current_relative_diffusion * np.ones(1, dtype='f')]
                 fft_data.push(fft_push_data)
 
                 arduino_port.write_line(int(current_cv))
@@ -452,16 +453,22 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data, fft_data):
     plot_freq = win.addPlot(title="Frequency Ratios")
     pfreq1 = plot_freq.plot(pen='y')
     pfreq2 = plot_freq.plot(pen='g')
+    preld = plot_freq.plot(pen='b')
 
     def update():
         global current_freq_ratio1
         global current_freq_ratio2
+        global current_relative_diffusion
         if not win.paused:
             data = tc_data.get()
             pid_vars = pid_data.get()
 
             tc1 = data[1]
             tc2 = data[2]
+
+            fft1 = np.abs(fftpack.rfft(tc1-np.mean(tc1)))[0:300]
+            fft2 = np.abs(fftpack.rfft(tc2-np.mean(tc2)))[0:300]
+
             if PLOT_FILTER:
                 tc1 = tc_filter.filtfilt(tc1)
                 tc2 = tc_filter.filtfilt(tc2)
@@ -485,15 +492,16 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data, fft_data):
             ptc1.setData(tc1)
             ptc2.setData(tc2)
 
-            fft1 = np.abs(fftpack.rfft(normalize(tc1)))[0:300]
-            fft2 = np.abs(fftpack.rfft(normalize(tc2)))[0:300]
+
             pfft1.setData(fft1)
             pfft2.setData(fft2)
-            current_freq_ratio1 = np.max(fft1[0:30]) / np.max(fft1[30:-1])
-            current_freq_ratio2 = np.max(fft2[0:30]) / np.max(fft2[30:-1])
+            current_freq_ratio1 = np.max(fft1[0:20]) / np.max(fft1[20:-1])
+            current_freq_ratio2 = np.max(fft2[0:20]) / np.max(fft2[20:-1])
+            current_relative_diffusion = 10*current_freq_ratio2/current_freq_ratio1
             freq_data = fft_data.get()
             pfreq1.setData(freq_data[0])
             pfreq2.setData(freq_data[1])
+            preld.setData(freq_data[2])
 
             pfr.setData(flow_rate.get())
             #pvel.setData(1.0 / (np.multiply((flow_rate.get() + 1.0E-6), (rpm.get() + 1.0E-6))))
