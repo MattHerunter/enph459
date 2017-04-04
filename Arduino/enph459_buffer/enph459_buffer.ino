@@ -82,7 +82,8 @@ void streamDataSin() {
   int t = 0;
   while(true){
     int heaterStrength = Serial.read();
-    HEATER_DUTY_CYCLE = (70*(10.0*sin(2.0*PI/800*t)/10.0 + 10.0*sin(8.0*PI/800*t))/10.0 + 127)*heaterStrength/255.0;
+    heaterStrength = 255;
+    HEATER_DUTY_CYCLE = (70*(5.0*sin(2.0*PI/800*t)/10.0 + 15.0*sin(16.0*PI/800*t))/10.0 + 127)*heaterStrength/255.0;
     analogWrite(MOSFET_GATE_PIN, HEATER_DUTY_CYCLE);
     delayMicroseconds(SAMPLE_TIME_MICROS);
     Serial.print(HEATER_DUTY_CYCLE);

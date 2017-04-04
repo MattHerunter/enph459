@@ -444,7 +444,7 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data, fft_data):
     # plot_rpm.setYRange(0, 2500, padding=0)
 
     # Plot for PID things
-    plot_pid = win.addPlot(title="PID Things")
+    plot_pid = win.addPlot(title="PID Control Signal")
     perrintegral = plot_pid.plot(pen='y')
     pcv = plot_pid.plot(pen='r')
 
@@ -485,8 +485,8 @@ def plotter_thread(tc_data, flow_rate, rpm, pid_data, fft_data):
             ptc1.setData(tc1)
             ptc2.setData(tc2)
 
-            fft1 = np.abs(fftpack.rfft(normalize(tc1)))[0:100]
-            fft2 = np.abs(fftpack.rfft(normalize(tc2)))[0:100]
+            fft1 = np.abs(fftpack.rfft(normalize(tc1)))[0:300]
+            fft2 = np.abs(fftpack.rfft(normalize(tc2)))[0:300]
             pfft1.setData(fft1)
             pfft2.setData(fft2)
             current_freq_ratio1 = np.max(fft1[0:30]) / np.max(fft1[30:-1])
